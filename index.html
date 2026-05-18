@@ -4,90 +4,104 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="theme-color" content="#ffffff">
-    <title>HK Parking Glass</title>
+    <title>HKRoadMate</title>
     
-    <link rel="manifest" href='data:application/manifest+json,{"name":"HK Parking Glass","short_name":"HK Parking","display":"standalone","background_color":"#ffffff"}'>
+    <link rel="manifest" href='data:application/manifest+json,{"name":"HKRoadMate","short_name":"RoadMate","display":"standalone","background_color":"#ffffff"}'>
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Map_marker_icon_%E2%80%93_Nicolas_Mollet_%E2%80%93_Parking_%E2%80%93_Transportation_%E2%80%93_Classic.png/256px-Map_marker_icon_%E2%80%93_Nicolas_Mollet_%E2%80%93_Parking_%E2%80%93_Transportation_%E2%80%93_Classic.png">
 
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
     <style>
+        /* HKRoadMate: iOS 26 Liquid Glass Design System */
         body {
             margin: 0; padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background: linear-gradient(-45deg, #fdfbfb, #ebedee, #f5f7fa, #c3cfe2);
-            background-size: 400% 400%;
-            animation: gradientBG 15s ease infinite;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%);
+            background-size: 200% 200%;
+            animation: gradientMove 15s ease infinite;
             overflow: hidden; height: 100vh; width: 100vw;
         }
 
-        @keyframes gradientBG {
+        @keyframes gradientMove {
             0% { background-position: 0% 50%; }
             50% { background-position: 100% 50%; }
             100% { background-position: 0% 50%; }
         }
 
-        .glass {
-            background: rgba(255, 255, 255, 0.55);
-            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+        /* Glassmorphism Utilities */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.65);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
             border: 1px solid rgba(255, 255, 255, 0.8);
-            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
         }
         
-        .glass-heavy {
-            background: rgba(255, 255, 255, 0.9);
+        .glass-header {
+            background: rgba(255, 255, 255, 0.85);
             backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px);
-            border: 1px solid rgba(255, 255, 255, 1);
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
+            border-bottom: 1px solid rgba(255, 255, 255, 1);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
         }
 
+        /* Map Structure */
         #map-container {
-            position: absolute; top: 0; left: 0; width: 100%; height: calc(100vh - 80px); z-index: 10;
+            position: absolute; top: 0; left: 0; width: 100%; height: calc(100vh - 85px); z-index: 10;
         }
 
+        /* Leaflet Overrides for Glass UI */
         .leaflet-popup-content-wrapper, .leaflet-popup-tip {
             background: rgba(255, 255, 255, 0.95) !important;
-            backdrop-filter: blur(16px) !important; -webkit-backdrop-filter: blur(16px) !important;
-            border: 1px solid rgba(255, 255, 255, 0.9); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.15);
-            border-radius: 1.5rem !important; color: #1f2937 !important;
+            backdrop-filter: blur(20px) !important; -webkit-backdrop-filter: blur(20px) !important;
+            border: 1px solid rgba(255, 255, 255, 1);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+            border-radius: 1.25rem !important;
         }
-        .leaflet-container a.leaflet-popup-close-button { color: #4b5563; padding: 12px; font-weight: bold; }
+        .leaflet-container a.leaflet-popup-close-button {
+            color: #6b7280; padding: 12px; font-weight: bold; width: 30px; height: 30px;
+        }
 
-        .marker-cluster-small, .marker-cluster-medium, .marker-cluster-large {
-            background-color: rgba(255, 255, 255, 0.7) !important; backdrop-filter: blur(8px);
-            border: 3px solid rgba(255, 255, 255, 0.95); border-radius: 50%;
-            color: #1e3a8a !important; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+        .marker-cluster {
+            background-color: rgba(255, 255, 255, 0.8) !important; backdrop-filter: blur(10px);
+            border: 3px solid rgba(255, 255, 255, 1); border-radius: 50%;
+            color: #1e3a8a !important; font-weight: 800; font-size: 14px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
         }
         .marker-cluster div { background-color: transparent !important; }
 
+        /* View Management */
         .view-section {
-            display: none; height: calc(100vh - 80px); overflow-y: auto; position: absolute;
-            top: 0; width: 100%; z-index: 20; padding-top: env(safe-area-inset-top);
+            display: none; height: calc(100vh - 85px); overflow-y: auto; position: absolute;
+            top: 0; width: 100%; z-index: 20; padding-top: calc(env(safe-area-inset-top) + 80px);
+            padding-bottom: 30px;
         }
         .view-section.active { display: block; }
-        #map-view.active { display: block; z-index: 10; }
+        #map-view.active { display: block; z-index: 10; padding: 0; }
         
-        .btn-animate { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+        .interactive-btn { transition: transform 0.15s ease, opacity 0.15s ease; }
+        .interactive-btn:active { transform: scale(0.94); opacity: 0.8; }
         ::-webkit-scrollbar { display: none; }
     </style>
 </head>
 <body class="text-gray-800 antialiased selection:bg-blue-300">
 
-    <header class="fixed top-0 w-full glass z-40 px-6 py-4 pt-[max(env(safe-area-inset-top),1rem)] flex justify-between items-center rounded-b-3xl">
-        <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-cyan-500">
-            <i class="fa-solid fa-square-parking mr-2 text-blue-500"></i>HK Park Glass
+    <header class="fixed top-0 w-full glass-header z-40 px-5 py-4 pt-[max(env(safe-area-inset-top),1rem)] flex justify-between items-center rounded-b-[2rem]">
+        <h1 class="text-2xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600 flex items-center">
+            <i class="fa-solid fa-car-side mr-2 text-blue-500"></i>HKRoadMate
         </h1>
-        <div id="status-indicator" class="flex items-center text-xs font-semibold px-3 py-1.5 rounded-full glass-heavy">
-            <span class="w-2.5 h-2.5 rounded-full bg-yellow-400 mr-2 animate-pulse shadow-sm" id="status-dot"></span>
-            <span id="status-text">載入中...</span>
+        <div id="status-indicator" class="flex items-center text-xs font-bold px-3 py-1.5 rounded-full bg-white shadow-sm border border-gray-100 transition-all duration-300">
+            <span class="w-2.5 h-2.5 rounded-full mr-2 shadow-inner bg-yellow-400 animate-pulse" id="status-dot"></span>
+            <span id="status-text" class="text-gray-600">系統初始化...</span>
         </div>
     </header>
 
@@ -95,177 +109,221 @@
         <div id="map-container"></div>
     </main>
 
-    <main id="list-view" class="view-section px-4 pb-24 pt-28">
-        <div class="flex justify-between items-center mb-6">
-            <h2 class="text-2xl font-bold drop-shadow-sm text-gray-800">我的收藏清單</h2>
-            <button onclick="uiManager.showAddListModal()" class="glass-heavy px-4 py-2 rounded-2xl text-blue-600 font-semibold shadow-sm btn-animate active:scale-95">
-                <i class="fa-solid fa-plus mr-1"></i> 新增
+    <main id="list-view" class="view-section px-5">
+        <div class="flex justify-between items-center mb-6 pt-4">
+            <h2 class="text-3xl font-black text-gray-800 tracking-tight">我的收藏</h2>
+            <button onclick="ui.openModal('create-list-modal')" class="glass-panel px-5 py-2.5 rounded-2xl text-blue-600 font-bold shadow-sm interactive-btn">
+                <i class="fa-solid fa-folder-plus mr-1"></i> 新增清單
             </button>
         </div>
-        <div id="lists-container" class="space-y-6"></div>
+        <div id="lists-container" class="space-y-6 pb-20">
+            </div>
     </main>
 
-    <nav class="fixed bottom-0 w-full glass-heavy pb-[env(safe-area-inset-bottom)] z-40 rounded-t-3xl">
-        <div class="flex justify-around items-center h-20 px-6">
-            <button onclick="uiManager.switchTab('map')" id="tab-map" class="flex flex-col items-center justify-center w-16 text-blue-600 font-bold btn-animate active:scale-90">
-                <i class="fa-solid fa-map-location-dot text-2xl mb-1 drop-shadow-sm"></i>
-                <span class="text-[10px]">地圖</span>
+    <nav class="fixed bottom-0 w-full glass-header pb-[env(safe-area-inset-bottom)] z-40 rounded-t-[2.5rem]">
+        <div class="flex justify-around items-center h-[85px] px-8">
+            <button onclick="ui.switchTab('map')" id="tab-map" class="flex flex-col items-center justify-center w-20 text-blue-600 font-black interactive-btn">
+                <i class="fa-solid fa-map-location-dot text-2xl mb-1.5 drop-shadow-sm"></i>
+                <span class="text-[11px] tracking-wider">地圖尋位</span>
             </button>
-            <button onclick="uiManager.switchTab('list')" id="tab-list" class="flex flex-col items-center justify-center w-16 text-gray-400 btn-animate active:scale-90">
-                <i class="fa-solid fa-layer-group text-2xl mb-1"></i>
-                <span class="text-[10px]">清單</span>
+            <button onclick="ui.switchTab('list')" id="tab-list" class="flex flex-col items-center justify-center w-20 text-gray-400 font-bold interactive-btn">
+                <i class="fa-solid fa-bookmark text-2xl mb-1.5"></i>
+                <span class="text-[11px] tracking-wider">收藏清單</span>
             </button>
         </div>
     </nav>
 
-    <div id="save-modal" class="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-300">
-        <div class="glass-heavy w-[90%] max-w-sm rounded-3xl p-6 transform scale-95 transition-transform duration-300" id="save-modal-content">
-            <h3 class="text-lg font-bold mb-4 text-gray-800">加入收藏清單</h3>
-            <div id="modal-lists-wrapper" class="space-y-3 max-h-60 overflow-y-auto mb-4"></div>
-            <button onclick="uiManager.closeModal('save-modal')" class="w-full py-3 rounded-2xl bg-gray-200 text-gray-700 font-semibold btn-animate active:scale-95">取消</button>
+    <div id="save-modal" class="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-300">
+        <div class="glass-header w-[90%] max-w-sm rounded-[2rem] p-6 transform scale-95 transition-transform duration-300" id="save-modal-content">
+            <h3 class="text-xl font-black mb-5 text-gray-800">儲存至清單</h3>
+            <div id="modal-lists-wrapper" class="space-y-3 max-h-64 overflow-y-auto mb-5 p-1"></div>
+            <button onclick="ui.closeModal('save-modal')" class="w-full py-3.5 rounded-2xl bg-gray-100 text-gray-600 font-bold interactive-btn text-lg">取消</button>
         </div>
     </div>
 
-    <div id="create-list-modal" class="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-300">
-        <div class="glass-heavy w-[90%] max-w-sm rounded-3xl p-6 transform scale-95 transition-transform duration-300" id="create-list-modal-content">
-            <h3 class="text-lg font-bold mb-4 text-gray-800">新增清單</h3>
-            <input type="text" id="new-list-name" placeholder="例如：上班用、旺角區" class="w-full glass px-4 py-3 rounded-2xl mb-4 focus:outline-none focus:ring-2 focus:ring-blue-400 placeholder-gray-500">
+    <div id="create-list-modal" class="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-300">
+        <div class="glass-header w-[90%] max-w-sm rounded-[2rem] p-6 transform scale-95 transition-transform duration-300" id="create-list-modal-content">
+            <h3 class="text-xl font-black mb-5 text-gray-800">建立新清單</h3>
+            <input type="text" id="new-list-name" placeholder="例如：銅鑼灣常用、公司附近" class="w-full bg-white border border-gray-200 px-5 py-4 rounded-2xl mb-6 focus:outline-none focus:ring-2 focus:ring-blue-500 font-bold text-gray-700 shadow-inner">
             <div class="flex space-x-3">
-                <button onclick="uiManager.closeModal('create-list-modal')" class="flex-1 py-3 rounded-2xl bg-gray-200 text-gray-700 font-semibold btn-animate active:scale-95">取消</button>
-                <button onclick="listManager.createList()" class="flex-1 py-3 rounded-2xl bg-blue-500 text-white font-semibold shadow-lg btn-animate active:scale-95">建立</button>
+                <button onclick="ui.closeModal('create-list-modal')" class="flex-1 py-3.5 rounded-2xl bg-gray-100 text-gray-600 font-bold interactive-btn text-lg">取消</button>
+                <button onclick="database.createList()" class="flex-1 py-3.5 rounded-2xl bg-blue-600 text-white font-bold shadow-lg interactive-btn text-lg">建立</button>
             </div>
         </div>
     </div>
 
     <script>
-        let map, markersGroup;
-        let allPointsMap = new Map();
-        let tempItemToSave = null;
+        /**
+         * HKRoadMate - Professional Core System
+         */
+        
+        // 1. Global State
+        const STATE = {
+            map: null,
+            markersGroup: null,
+            allPointsMap: new Map(),
+            itemToSave: null
+        };
 
-        const meterIcon = L.divIcon({
-            className: 'custom-div-icon',
-            html: `<div class="glass flex items-center justify-center w-10 h-10 rounded-full shadow-md border-[3px] border-white"><i class="fa-solid fa-square-parking text-[22px] text-blue-500"></i></div>`,
-            iconSize: [40, 40], iconAnchor: [20, 20], popupAnchor: [0, -20]
-        });
+        // 2. High-Performance Icons
+        const ICONS = {
+            meter: L.divIcon({
+                className: 'custom-icon',
+                html: `<div class="bg-blue-500 w-11 h-11 rounded-full shadow-lg border-[3px] border-white flex items-center justify-center"><i class="fa-solid fa-square-parking text-white text-xl"></i></div>`,
+                iconSize: [44, 44], iconAnchor: [22, 22], popupAnchor: [0, -22]
+            }),
+            carpark: L.divIcon({
+                className: 'custom-icon',
+                html: `<div class="bg-indigo-600 w-11 h-11 rounded-full shadow-lg border-[3px] border-white flex items-center justify-center"><i class="fa-solid fa-square-parking text-white text-xl"></i></div>`,
+                iconSize: [44, 44], iconAnchor: [22, 22], popupAnchor: [0, -22]
+            })
+        };
 
-        const carparkIcon = L.divIcon({
-            className: 'custom-div-icon',
-            html: `<div class="glass flex items-center justify-center w-10 h-10 rounded-full shadow-md border-[3px] border-white"><i class="fa-solid fa-building text-[20px] text-purple-500"></i></div>`,
-            iconSize: [40, 40], iconAnchor: [20, 20], popupAnchor: [0, -20]
-        });
-
-        // 最原始、防呆的 CSV 列解析器
-        function parseCSVRow(str) {
-            let result = [], cur = '', inQuotes = false;
-            for (let i = 0; i < str.length; i++) {
-                let char = str[i];
-                if (char === '"') inQuotes = !inQuotes;
-                else if (char === ',' && !inQuotes) { result.push(cur); cur = ''; }
-                else cur += char;
-            }
-            result.push(cur);
-            return result.map(v => v.replace(/^"|"$/g, '').trim());
-        }
-
-        // 防彈級 CSV 轉換器
-        function parseCSV(text) {
-            if (!text) return [];
-            text = text.replace(/^\uFEFF/, ''); // 清除亂碼
-            const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
-            if (lines.length < 2) return [];
-            
-            // 強制將標題轉小寫，免疫所有大小寫或空白錯誤
-            const headers = parseCSVRow(lines[0]).map(h => h.toLowerCase());
-            
-            return lines.slice(1).map(line => {
-                const values = parseCSVRow(line);
-                const obj = {};
-                headers.forEach((h, i) => { obj[h] = values[i] || ''; });
-                return obj;
-            });
-        }
-
-        const listManager = {
-            getLists() {
-                const lists = localStorage.getItem('hkParkLists');
-                return lists ? JSON.parse(lists) : [{ id: 'default', name: '預設收藏', items: [] }];
+        // 3. UI Controller
+        const ui = {
+            setStatus(msg, statusType) {
+                const text = document.getElementById('status-text');
+                const dot = document.getElementById('status-dot');
+                text.innerText = msg;
+                
+                dot.className = 'w-2.5 h-2.5 rounded-full mr-2 shadow-inner ';
+                if(statusType === 'loading') dot.className += 'bg-yellow-400 animate-pulse';
+                else if(statusType === 'success') dot.className += 'bg-green-500';
+                else dot.className += 'bg-red-500';
             },
-            saveLists(lists) {
-                localStorage.setItem('hkParkLists', JSON.stringify(lists));
-                this.renderListsView();
+            switchTab(tabId) {
+                document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+                document.getElementById(`${tabId}-view`).classList.add('active');
+
+                // Reset Tab Styles
+                document.getElementById('tab-map').className = "flex flex-col items-center justify-center w-20 text-gray-400 font-bold interactive-btn";
+                document.getElementById('tab-list').className = "flex flex-col items-center justify-center w-20 text-gray-400 font-bold interactive-btn";
+                
+                // Activate Tab Style
+                const activeTab = document.getElementById(`tab-${tabId}`);
+                activeTab.classList.replace('text-gray-400', 'text-blue-600');
+                activeTab.classList.replace('font-bold', 'font-black');
+
+                if (tabId === 'map' && STATE.map) {
+                    setTimeout(() => STATE.map.invalidateSize(), 100);
+                } else if (tabId === 'list') {
+                    database.renderView();
+                }
+            },
+            openModal(id, dataId = null) {
+                if (dataId) STATE.itemToSave = STATE.allPointsMap.get(dataId);
+                
+                if (id === 'save-modal') {
+                    const wrapper = document.getElementById('modal-lists-wrapper');
+                    wrapper.innerHTML = database.get().map(l => `
+                        <button onclick="database.saveItem('${l.id}')" class="w-full text-left px-5 py-4 bg-white rounded-2xl flex justify-between items-center interactive-btn shadow-sm border border-gray-100 mb-2">
+                            <span class="font-bold text-gray-800">${l.name}</span>
+                            <i class="fa-solid fa-plus text-blue-600 bg-blue-50 w-7 h-7 flex items-center justify-center rounded-full"></i>
+                        </button>
+                    `).join('');
+                }
+
+                const modal = document.getElementById(id);
+                modal.classList.remove('opacity-0', 'pointer-events-none');
+                document.getElementById(`${id}-content`).classList.remove('scale-95');
+                if (id === 'create-list-modal') document.getElementById('new-list-name').focus();
+            },
+            closeModal(id) {
+                document.getElementById(id).classList.add('opacity-0', 'pointer-events-none');
+                document.getElementById(`${id}-content`).classList.add('scale-95');
+            }
+        };
+
+        // 4. Local Database Controller
+        const database = {
+            get() {
+                const data = localStorage.getItem('hkRoadMateData');
+                return data ? JSON.parse(data) : [{ id: 'default', name: '預設收藏清單', items: [] }];
+            },
+            set(data) {
+                localStorage.setItem('hkRoadMateData', JSON.stringify(data));
+                this.renderView();
             },
             createList() {
-                const nameInput = document.getElementById('new-list-name');
-                const name = nameInput.value.trim();
+                const input = document.getElementById('new-list-name');
+                const name = input.value.trim();
                 if (!name) return;
-                const lists = this.getLists();
-                lists.push({ id: 'list_' + Date.now(), name, items: [] });
-                this.saveLists(lists);
-                nameInput.value = '';
-                uiManager.closeModal('create-list-modal');
+                const data = this.get();
+                data.push({ id: 'list_' + Date.now(), name, items: [] });
+                this.set(data);
+                input.value = '';
+                ui.closeModal('create-list-modal');
             },
             deleteList(listId) {
-                if(listId === 'default') return alert("無法刪除預設清單");
-                if(confirm("確定刪除此清單？")) {
-                    this.saveLists(this.getLists().filter(l => l.id !== listId));
+                if(listId === 'default') return alert("預設清單無法刪除");
+                if(confirm("確定要刪除整個清單嗎？")) {
+                    this.set(this.get().filter(l => l.id !== listId));
                 }
             },
-            addItemToList(listId, item) {
-                const lists = this.getLists();
-                const targetList = lists.find(l => l.id === listId);
-                if (targetList) {
-                    if(!targetList.items.find(i => i.id === item.id)) {
-                        targetList.items.push(item);
-                        this.saveLists(lists);
-                        alert('已加入收藏！');
-                    } else alert('項目已存在於此清單。');
+            saveItem(listId) {
+                if (!STATE.itemToSave) return;
+                const data = this.get();
+                const list = data.find(l => l.id === listId);
+                if (list) {
+                    if(!list.items.find(i => i.id === STATE.itemToSave.id)) {
+                        list.items.push(STATE.itemToSave);
+                        this.set(data);
+                        alert('成功加入清單！');
+                    } else {
+                        alert('此地點已在清單中。');
+                    }
                 }
-                uiManager.closeModal('save-modal');
+                ui.closeModal('save-modal');
             },
             removeItem(listId, itemId) {
-                const lists = this.getLists();
-                const list = lists.find(l => l.id === listId);
+                const data = this.get();
+                const list = data.find(l => l.id === listId);
                 if(list) {
                     list.items = list.items.filter(i => i.id !== itemId);
-                    this.saveLists(lists);
+                    this.set(data);
                 }
             },
-            renderListsView() {
+            renderView() {
                 const container = document.getElementById('lists-container');
-                const lists = this.getLists();
+                const lists = this.get();
                 container.innerHTML = '';
                 
-                if(lists.length === 0) return container.innerHTML = '<div class="text-center text-gray-400 mt-10 font-bold">尚無清單</div>';
+                if(lists.length === 0) return container.innerHTML = '<div class="text-center text-gray-400 mt-12 font-bold">尚無任何收藏</div>';
 
                 lists.forEach(list => {
                     let itemsHtml = list.items.length === 0 
-                        ? '<p class="text-sm text-gray-400 italic px-2">無收藏項目</p>' 
+                        ? '<p class="text-sm text-gray-400 italic px-2">尚未添加任何地點</p>' 
                         : list.items.map(item => {
-                            const availVal = item.available !== undefined ? item.available : (item.statusArray ? item.statusArray.filter(s=>s===1).length : 0);
-                            const availColor = availVal > 0 ? 'text-green-500' : (availVal === 0 ? 'text-red-500' : 'text-gray-500');
+                            // Fetch fresh availability if it exists in current map state, else use saved
+                            const liveData = STATE.allPointsMap.get(item.id);
+                            const displayItem = liveData || item; 
+                            
+                            const availVal = displayItem.available;
+                            const availColor = availVal > 0 ? 'text-green-500' : (availVal === 0 ? 'text-red-500' : 'text-gray-400');
+                            
                             return `
-                                <div class="glass p-3 rounded-2xl flex justify-between items-center mb-2 btn-animate active:scale-95" onclick="app.flyTo(${item.lat}, ${item.lng})">
-                                    <div class="flex-1">
-                                        <h4 class="font-bold text-gray-800 text-sm">${item.name}</h4>
-                                        <p class="text-[10px] font-bold text-gray-400 mt-0.5">${item.type === 'carpark' ? '停車場' : '路段咪錶'}</p>
+                                <div class="bg-white p-4 rounded-[1.25rem] flex justify-between items-center mb-3 shadow-sm border border-gray-100 interactive-btn" onclick="app.flyTo(${displayItem.lat}, ${displayItem.lng})">
+                                    <div class="flex-1 pr-3">
+                                        <h4 class="font-bold text-gray-800 text-[15px] leading-tight mb-1">${displayItem.name}</h4>
+                                        <span class="text-[10px] font-black text-gray-400 bg-gray-100 px-2 py-0.5 rounded-md">${displayItem.type === 'carpark' ? '停車場' : '路段咪錶'}</span>
                                     </div>
-                                    <div class="flex items-center space-x-3">
+                                    <div class="flex items-center space-x-4">
                                         <div class="text-right">
-                                            <span class="block text-[10px] text-gray-400 font-bold">空位</span>
-                                            <span class="font-bold text-lg leading-none ${availColor}">${availVal}</span>
+                                            <span class="block text-[10px] text-gray-400 font-bold mb-0.5">空位</span>
+                                            <span class="font-black text-xl leading-none ${availColor}">${availVal}</span>
                                         </div>
-                                        <button onclick="event.stopPropagation(); listManager.removeItem('${list.id}', '${item.id}')" class="text-red-400 bg-red-50 p-2 rounded-xl btn-animate active:scale-90"><i class="fa-solid fa-trash text-sm"></i></button>
+                                        <button onclick="event.stopPropagation(); database.removeItem('${list.id}', '${displayItem.id}')" class="text-red-400 bg-red-50 w-10 h-10 rounded-full flex items-center justify-center interactive-btn"><i class="fa-solid fa-trash text-sm"></i></button>
                                     </div>
                                 </div>
                             `;
                         }).join('');
 
                     container.innerHTML += `
-                        <div class="glass-heavy rounded-3xl p-5 shadow-sm relative overflow-hidden">
-                            <div class="absolute top-0 left-0 w-1.5 h-full bg-blue-400"></div>
-                            <div class="flex justify-between items-center mb-4">
-                                <h3 class="text-lg font-bold text-gray-800">${list.name} <span class="text-xs font-normal text-gray-400 ml-2 bg-gray-100 px-2 py-1 rounded-full">${list.items.length} 項</span></h3>
-                                ${list.id !== 'default' ? `<button onclick="listManager.deleteList('${list.id}')" class="text-gray-400 hover:text-red-500 bg-gray-100 w-8 h-8 rounded-full"><i class="fa-solid fa-xmark"></i></button>` : ''}
+                        <div class="glass-panel rounded-[2rem] p-5 relative overflow-hidden">
+                            <div class="absolute top-0 left-0 w-2 h-full bg-blue-500"></div>
+                            <div class="flex justify-between items-center mb-5 pl-2">
+                                <h3 class="text-xl font-black text-gray-800">${list.name} <span class="text-xs font-bold text-gray-500 ml-2 bg-gray-200/50 px-2 py-1 rounded-full">${list.items.length}</span></h3>
+                                ${list.id !== 'default' ? `<button onclick="database.deleteList('${list.id}')" class="text-gray-400 bg-gray-100 w-8 h-8 rounded-full flex items-center justify-center interactive-btn"><i class="fa-solid fa-xmark"></i></button>` : ''}
                             </div>
                             <div class="space-y-1">${itemsHtml}</div>
                         </div>
@@ -274,241 +332,254 @@
             }
         };
 
-        const uiManager = {
-            switchTab(tab) {
-                document.getElementById('map-view').classList.remove('active');
-                document.getElementById('list-view').classList.remove('active');
-                
-                document.getElementById('tab-map').classList.replace('text-blue-600', 'text-gray-400');
-                document.getElementById('tab-map').classList.remove('font-bold');
-                document.getElementById('tab-list').classList.replace('text-blue-600', 'text-gray-400');
-                document.getElementById('tab-list').classList.remove('font-bold');
-
-                document.getElementById(`${tab}-view`).classList.add('active');
-                const activeTab = document.getElementById(`tab-${tab}`);
-                activeTab.classList.replace('text-gray-400', 'text-blue-600');
-                activeTab.classList.add('font-bold');
-
-                if(tab === 'map' && map) setTimeout(() => map.invalidateSize(), 100);
-                else if (tab === 'list') listManager.renderListsView();
-            },
-            updateStatus(msg, type) {
-                document.getElementById('status-text').innerText = msg;
-                const dot = document.getElementById('status-dot');
-                dot.className = `w-2.5 h-2.5 rounded-full mr-2 shadow-sm ${type === 'loading' ? 'animate-pulse bg-yellow-400' : type === 'success' ? 'bg-green-500' : 'bg-red-500'}`;
-            },
-            showSaveModal(pointId) {
-                tempItemToSave = allPointsMap.get(pointId);
-                if(!tempItemToSave) return;
-                const wrapper = document.getElementById('modal-lists-wrapper');
-                wrapper.innerHTML = listManager.getLists().map(l => `
-                    <button onclick="listManager.addItemToList('${l.id}', tempItemToSave)" class="w-full text-left px-4 py-3.5 glass rounded-2xl flex justify-between items-center btn-animate active:scale-95 mb-2">
-                        <span class="font-bold text-gray-700">${l.name}</span>
-                        <i class="fa-solid fa-plus text-blue-500 text-sm bg-blue-50 w-6 h-6 flex items-center justify-center rounded-full"></i>
-                    </button>
-                `).join('');
-                document.getElementById('save-modal').classList.remove('opacity-0', 'pointer-events-none');
-                document.getElementById('save-modal-content').classList.remove('scale-95');
-            },
-            showAddListModal() {
-                document.getElementById('create-list-modal').classList.remove('opacity-0', 'pointer-events-none');
-                document.getElementById('create-list-modal-content').classList.remove('scale-95');
-                document.getElementById('new-list-name').focus();
-            },
-            closeModal(modalId) {
-                document.getElementById(modalId).classList.add('opacity-0', 'pointer-events-none');
-                document.getElementById(`${modalId}-content`).classList.add('scale-95');
-                tempItemToSave = null;
-            }
-        };
-
-        const app = {
-            init() {
-                this.initMap();
-                this.fetchData();
-                listManager.renderListsView();
-                window.uiManager = uiManager;
-                window.listManager = listManager;
-                window.app = this;
-            },
-            
-            initMap() {
-                map = L.map('map-container', { zoomControl: false }).setView([22.3193, 114.1694], 13);
-                L.control.zoom({ position: 'topright' }).addTo(map);
-                L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-                    attribution: '© OpenStreetMap', maxZoom: 19
-                }).addTo(map);
-
-                markersGroup = L.markerClusterGroup({
-                    maxClusterRadius: 60, spiderfyOnMaxZoom: true, showCoverageOnHover: false, chunkedLoading: true
+        // 5. Data Fetching & Processing Engine
+        const engine = {
+            // Helper to fetch CSV via PapaParse (Non-blocking)
+            fetchCSV(url) {
+                return new Promise(async (resolve) => {
+                    try {
+                        const res = await fetch(url);
+                        if (!res.ok) throw new Error('Network response was not ok');
+                        const text = await res.text();
+                        
+                        Papa.parse(text.trim(), {
+                            header: true,
+                            skipEmptyLines: true,
+                            // PapaParse automatically handles quotes and messy delimiters!
+                            complete: (results) => resolve(results.data),
+                            error: (err) => { console.error('PapaParse error:', err); resolve([]); }
+                        });
+                    } catch (error) {
+                        console.error('Fetch CSV Error:', error);
+                        resolve([]); // Fail gracefully
+                    }
                 });
-                map.addLayer(markersGroup);
             },
 
-            async fetchData() {
-                uiManager.updateStatus('抓取全港實時數據...', 'loading');
-                allPointsMap.clear();
-
-                // 1. 抓取政府停車場 API (最穩定的 JSON)
+            async loadCarparks() {
                 try {
-                    const [cpInfoRes, cpVacRes] = await Promise.all([
+                    const [infoRes, vacRes] = await Promise.all([
                         fetch('https://api.data.gov.hk/v1/carpark-info-vacancy?data=info&lang=zh_TW'),
                         fetch('https://api.data.gov.hk/v1/carpark-info-vacancy?data=vacancy&lang=zh_TW')
                     ]);
                     
-                    if(cpInfoRes.ok && cpVacRes.ok) {
-                        const infoData = await cpInfoRes.json();
-                        const vacancyData = await cpVacRes.json();
-                        const vacancyMap = {};
-                        
-                        (vacancyData.results || []).forEach(v => {
-                            let count = 0;
-                            if(v.privateCar && v.privateCar.length > 0) count = parseInt(v.privateCar[0].vacancy) || 0;
-                            vacancyMap[v.park_Id] = count < 0 ? 0 : count;
-                        });
-
-                        (infoData.results || []).forEach(cp => {
-                            const lat = parseFloat(cp.latitude);
-                            const lng = parseFloat(cp.longitude);
-                            if(isNaN(lat) || isNaN(lng)) return;
-                            
-                            const id = 'cp_' + cp.park_Id;
-                            allPointsMap.set(id, {
-                                id: id, type: 'carpark', name: cp.name || '未命名停車場',
-                                lat: lat, lng: lng, isPublic: true, isIndoor: true, total: '-', 
-                                available: vacancyMap[cp.park_Id] !== undefined ? vacancyMap[cp.park_Id] : '未知'
-                            });
-                        });
-                    }
-                } catch (e) {
-                    console.log('停車場 API 載入失敗', e);
-                }
-
-                // 2. 抓取咪錶 CSV (使用最單純的 Fetch 與解析)
-                try {
-                    const meterInfoRes = await fetch('https://resource.data.one.gov.hk/td/psiparkingspaces/spaceinfo/parkingspaces.csv');
-                    const meterVacRes = await fetch('https://resource.data.one.gov.hk/td/psiparkingspaces/occupancystatus/occupancystatus.csv');
+                    const infoData = await infoRes.json();
+                    const vacancyData = await vacRes.json();
                     
-                    if (meterInfoRes.ok && meterVacRes.ok) {
-                        const meterVacancies = parseCSV(await meterVacRes.text());
-                        const meterVacMap = {};
+                    const vacancyMap = new Map();
+                    (vacancyData.results || []).forEach(v => {
+                        let count = 0;
+                        if(v.privateCar && v.privateCar.length > 0) count = parseInt(v.privateCar[0].vacancy) || 0;
+                        vacancyMap.set(v.park_Id, count < 0 ? 0 : count);
+                    });
+
+                    (infoData.results || []).forEach(cp => {
+                        const lat = parseFloat(cp.latitude);
+                        const lng = parseFloat(cp.longitude);
+                        if(isNaN(lat) || isNaN(lng)) return;
                         
-                        meterVacancies.forEach(m => {
-                            // 動態捕捉欄位名，避免政府更改順序
-                            const keys = Object.keys(m);
-                            const spaceIdKey = keys.find(k => k.includes('spaceid')) || keys[1] || keys[0];
-                            const statusKey = keys.find(k => k.includes('status') || k.includes('occupancy')) || keys[2] || keys[1];
-                            if(m[spaceIdKey]) meterVacMap[m[spaceIdKey]] = m[statusKey];
+                        const id = 'cp_' + cp.park_Id;
+                        STATE.allPointsMap.set(id, {
+                            id, type: 'carpark', name: cp.name || '政府數據停車場',
+                            lat, lng, isPublic: true, isIndoor: true, total: '-', 
+                            available: vacancyMap.has(cp.park_Id) ? vacancyMap.get(cp.park_Id) : '未知'
                         });
-
-                        const meters = parseCSV(await meterInfoRes.text());
-                        const streetSections = {};
-                        let validCount = 0;
-
-                        meters.forEach(m => {
-                            const lat = parseFloat(m['latitude'] || m['lat']);
-                            const lng = parseFloat(m['longitude'] || m['long'] || m['lng']);
-                            if(isNaN(lat) || isNaN(lng)) return;
-
-                            validCount++;
-                            const sectionName = m['sectionofstreet_tc'] || m['street_tc'] || '未命名路段';
-                            const spaceId = m['parkingspaceid'];
-                            
-                            const status = meterVacMap[spaceId] || 'O'; 
-                            const isVacant = (status === 'V' || status === 'Vacant' || status === '0') ? 1 : 0;
-
-                            if(!streetSections[sectionName]) {
-                                streetSections[sectionName] = {
-                                    id: 'metersec_' + validCount, type: 'meter', name: sectionName,
-                                    latSum: 0, lngSum: 0, count: 0, available: 0, statusArray: []
-                                };
-                            }
-                            
-                            streetSections[sectionName].latSum += lat;
-                            streetSections[sectionName].lngSum += lng;
-                            streetSections[sectionName].count += 1;
-                            streetSections[sectionName].available += isVacant;
-                            streetSections[sectionName].statusArray.push(isVacant);
-                        });
-
-                        // 結算每個路段的中心點
-                        Object.values(streetSections).forEach(sec => {
-                            sec.lat = sec.latSum / sec.count;
-                            sec.lng = sec.lngSum / sec.count;
-                            allPointsMap.set(sec.id, sec);
-                        });
-                    }
+                    });
                 } catch (e) {
-                    console.log('咪錶 CSV 解析失敗', e);
+                    console.error('Carpark API Fail:', e);
                 }
-
-                // 3. 終極保險機制：如果因為 CORS 被阻擋導致抓不到半個點，強制塞入假數據讓你能看到 UI
-                if(allPointsMap.size === 0) {
-                    uiManager.updateStatus('政府數據連線失敗，啟用展示模式', 'error');
-                    const mockMeters = [
-                        { id: 'm_mock1', type: 'meter', name: '[測試] 旺角彌敦道段', lat: 22.3193, lng: 114.1694, count: 8, available: 3, statusArray: [1, 0, 0, 1, 0, 0, 1, 0] },
-                        { id: 'm_mock2', type: 'meter', name: '[測試] 中環干諾道中', lat: 22.2828, lng: 114.1589, count: 5, available: 1, statusArray: [0, 0, 1, 0, 0] }
-                    ];
-                    mockMeters.forEach(m => allPointsMap.set(m.id, m));
-                } else {
-                    uiManager.updateStatus(`已載入 ${allPointsMap.size} 個位置`, 'success');
-                }
-                
-                this.renderAllMarkers();
             },
 
-            renderAllMarkers() {
-                markersGroup.clearLayers();
+            async loadMeters() {
+                try {
+                    const [meterInfo, meterVac] = await Promise.all([
+                        this.fetchCSV('https://resource.data.one.gov.hk/td/psiparkingspaces/spaceinfo/parkingspaces.csv'),
+                        this.fetchCSV('https://resource.data.one.gov.hk/td/psiparkingspaces/occupancystatus/occupancystatus.csv')
+                    ]);
+
+                    if (meterInfo.length === 0) return;
+
+                    // Map Vacancy Data
+                    const vacancyMap = new Map();
+                    meterVac.forEach(row => {
+                        const keys = Object.keys(row);
+                        if(keys.length < 2) return;
+                        // Use keys robustly regardless of BOM or capitalization
+                        const idKey = keys.find(k => k.toLowerCase().includes('spaceid')) || keys[0];
+                        const statusKey = keys.find(k => k.toLowerCase().includes('status')) || keys[1];
+                        if (row[idKey]) vacancyMap.set(row[idKey], row[statusKey]);
+                    });
+
+                    // Process Info Data into Street Sections
+                    const streetSections = new Map();
+                    let validMeters = 0;
+
+                    meterInfo.forEach(row => {
+                        const keys = Object.keys(row);
+                        const latKey = keys.find(k => k.toLowerCase() === 'latitude') || keys.find(k => k.toLowerCase().includes('lat'));
+                        const lngKey = keys.find(k => k.toLowerCase() === 'longitude') || keys.find(k => k.toLowerCase().includes('long'));
+                        const streetKey = keys.find(k => k.toLowerCase().includes('sectionofstreet_tc')) || keys.find(k => k.toLowerCase().includes('street_tc'));
+                        const idKey = keys.find(k => k.toLowerCase().includes('spaceid'));
+
+                        if (!latKey || !lngKey) return;
+
+                        const lat = parseFloat(row[latKey]);
+                        const lng = parseFloat(row[lngKey]);
+                        if (isNaN(lat) || isNaN(lng)) return;
+
+                        validMeters++;
+                        const sectionName = (streetKey && row[streetKey]) ? row[streetKey] : '未命名路段';
+                        const spaceId = idKey ? row[idKey] : null;
+                        
+                        const status = vacancyMap.get(spaceId) || 'O';
+                        const isVacant = (status === 'V' || status === 'Vacant' || status === '0') ? 1 : 0;
+
+                        if (!streetSections.has(sectionName)) {
+                            streetSections.set(sectionName, {
+                                id: 'metersec_' + validMeters, 
+                                type: 'meter', name: sectionName,
+                                latSum: 0, lngSum: 0, count: 0, available: 0, statusArray: []
+                            });
+                        }
+                        
+                        const sec = streetSections.get(sectionName);
+                        sec.latSum += lat;
+                        sec.lngSum += lng;
+                        sec.count += 1;
+                        sec.available += isVacant;
+                        sec.statusArray.push(isVacant);
+                    });
+
+                    // Finalize Sections & add to Map
+                    streetSections.forEach(sec => {
+                        sec.lat = sec.latSum / sec.count;
+                        sec.lng = sec.lngSum / sec.count;
+                        STATE.allPointsMap.set(sec.id, sec);
+                    });
+
+                } catch (e) {
+                    console.error('Meter CSV Fail:', e);
+                }
+            }
+        };
+
+        // 6. Main App Controller
+        const app = {
+            async init() {
+                try {
+                    this.initMap();
+                    
+                    // Promise.allSettled guarantees UI won't freeze even if API completely dies
+                    await Promise.allSettled([
+                        engine.loadCarparks(),
+                        engine.loadMeters()
+                    ]);
+
+                    // Fail-safe Mock Data inject
+                    if (STATE.allPointsMap.size === 0) {
+                        ui.setStatus('系統離線 - 展示模式', 'error');
+                        const mocks = [
+                            { id: 'm1', type: 'meter', name: '[示範] 彌敦道 (旺角段)', lat: 22.3193, lng: 114.1694, count: 6, available: 2, statusArray: [1, 0, 0, 1, 0, 0] },
+                            { id: 'm2', type: 'meter', name: '[示範] 干諾道中 (中環段)', lat: 22.2828, lng: 114.1589, count: 4, available: 0, statusArray: [0, 0, 0, 0] },
+                            { id: 'cp1', type: 'carpark', name: '[示範] 時代廣場停車場', lat: 22.2782, lng: 114.1823, isPublic: false, available: 45 }
+                        ];
+                        mocks.forEach(m => STATE.allPointsMap.set(m.id, m));
+                    } else {
+                        ui.setStatus(`已載入 ${STATE.allPointsMap.size} 個位置`, 'success');
+                    }
+
+                    this.renderMap();
+                    database.renderView();
+
+                } catch (e) {
+                    ui.setStatus('初始化失敗', 'error');
+                    console.error(e);
+                } finally {
+                    // Force removing 'loading' animation to ensure UI interacts
+                    document.getElementById('status-dot').classList.remove('animate-pulse');
+                    document.getElementById('status-dot').classList.replace('bg-yellow-400', STATE.allPointsMap.size > 0 ? 'bg-green-500' : 'bg-red-500');
+                }
+            },
+            
+            initMap() {
+                // Centered at Hong Kong
+                STATE.map = L.map('map-container', { zoomControl: false, tap: true }).setView([22.3193, 114.1694], 13);
+                L.control.zoom({ position: 'topright' }).addTo(STATE.map);
+                
+                // Modern minimalist base map
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                    attribution: '© OpenStreetMap', maxZoom: 19
+                }).addTo(STATE.map);
+
+                // Setup Cluster Group for massive performance boost
+                STATE.markersGroup = L.markerClusterGroup({
+                    maxClusterRadius: 60,
+                    spiderfyOnMaxZoom: true,
+                    showCoverageOnHover: false,
+                    zoomToBoundsOnClick: true,
+                    chunkedLoading: true // Critical for thousands of points
+                });
+                STATE.map.addLayer(STATE.markersGroup);
+            },
+
+            renderMap() {
+                STATE.markersGroup.clearLayers();
                 const markers = []; 
 
-                allPointsMap.forEach((point, id) => {
+                STATE.allPointsMap.forEach((point, id) => {
                     const isMeter = point.type === 'meter';
-                    const marker = L.marker([point.lat, point.lng], { icon: isMeter ? meterIcon : carparkIcon });
+                    const marker = L.marker([point.lat, point.lng], { icon: isMeter ? ICONS.meter : ICONS.carpark });
                     
                     let contentHtml = '';
 
                     if (isMeter) {
-                        const available = point.available;
-                        const blocks = point.statusArray.map(s => `<div class="h-6 min-w-[12px] flex-grow rounded-[4px] ${s === 1 ? 'bg-green-400' : 'bg-red-400 shadow-inner'}"></div>`).join('');
+                        const avail = point.available;
+                        // Map status to visual blocks (flex-wrap for responsive wrapping)
+                        const blocks = point.statusArray.map(s => `<div class="h-8 min-w-[15px] flex-grow rounded-[6px] ${s === 1 ? 'bg-green-400' : 'bg-red-400'} shadow-inner border border-black/5"></div>`).join('');
+                        
                         contentHtml = `
-                            <div class="p-1 w-[260px] max-h-72 overflow-y-auto">
-                                <div class="bg-blue-50 text-blue-600 text-[10px] font-bold px-2 py-1 rounded-lg inline-block mb-2">路邊咪錶路段</div>
-                                <h3 class="font-bold text-lg mb-4 leading-snug text-gray-800">${point.name}</h3>
+                            <div class="w-[280px] p-1">
+                                <div class="bg-blue-100 text-blue-700 text-[10px] font-black px-2.5 py-1 rounded-md inline-block mb-3 uppercase tracking-wider">Street Meters</div>
+                                <h3 class="font-black text-xl mb-5 leading-tight text-gray-800">${point.name}</h3>
                                 
-                                <div class="glass bg-white/70 rounded-2xl p-3 mb-4 flex justify-between items-center shadow-sm">
+                                <div class="bg-gray-50 border border-gray-100 rounded-2xl p-4 mb-5 flex justify-between items-center shadow-inner">
                                     <div class="text-center w-1/2 border-r border-gray-200">
-                                        <div class="text-[10px] text-gray-500 font-bold mb-1">該路段總錶位</div>
-                                        <div class="font-bold text-lg text-gray-700">${point.count}</div>
+                                        <div class="text-[11px] text-gray-400 font-bold mb-1">路段總錶位</div>
+                                        <div class="font-black text-xl text-gray-700">${point.count}</div>
                                     </div>
                                     <div class="text-center w-1/2">
-                                        <div class="text-[10px] text-gray-500 font-bold mb-1">即時空位</div>
-                                        <div class="font-bold text-2xl ${available > 0 ? 'text-green-500' : 'text-red-500'}">${available}</div>
+                                        <div class="text-[11px] text-gray-400 font-bold mb-1">實時空位</div>
+                                        <div class="font-black text-3xl ${avail > 0 ? 'text-green-500' : 'text-red-500'}">${avail}</div>
                                     </div>
                                 </div>
-                                <div class="flex flex-wrap gap-1.5 w-full bg-gray-100/80 p-2.5 rounded-xl mb-5 shadow-inner">
+                                
+                                <div class="text-[10px] font-bold text-gray-400 mb-2 pl-1">各錶位佔用狀況 (綠色為空)：</div>
+                                <div class="flex flex-wrap gap-2 w-full mb-6">
                                     ${blocks}
                                 </div>
+                                
                                 <div class="flex space-x-3">
-                                    <button onclick="app.navigate(${point.lat}, ${point.lng})" class="flex-1 bg-blue-500 text-white py-3 rounded-xl text-sm font-bold shadow-lg btn-animate active:scale-95 flex items-center justify-center"><i class="fa-solid fa-location-arrow mr-2"></i>開始導航</button>
-                                    <button onclick="uiManager.showSaveModal('${id}')" class="w-[50px] bg-white border-2 border-gray-100 text-yellow-400 py-3 rounded-xl text-lg shadow-sm btn-animate active:scale-90 flex items-center justify-center"><i class="fa-solid fa-star"></i></button>
+                                    <button onclick="app.navigate(${point.lat}, ${point.lng})" class="flex-1 bg-blue-600 text-white py-3.5 rounded-2xl text-[15px] font-black shadow-lg interactive-btn"><i class="fa-solid fa-location-arrow mr-2"></i>導航至此</button>
+                                    <button onclick="ui.openModal('save-modal', '${id}')" class="w-[55px] bg-white border-2 border-gray-100 text-yellow-400 py-3.5 rounded-2xl text-xl shadow-sm interactive-btn"><i class="fa-solid fa-star"></i></button>
                                 </div>
                             </div>`;
                     } else {
-                        const availColor = point.available > 0 ? 'text-green-500' : (point.available === 0 ? 'text-red-500' : 'text-gray-500');
+                        const avail = point.available;
+                        const availColor = avail > 0 ? 'text-green-500' : (avail === 0 ? 'text-red-500' : 'text-gray-500');
+                        
                         contentHtml = `
-                            <div class="p-1 w-[260px]">
-                                <div class="bg-purple-50 text-purple-600 text-[10px] font-bold px-2 py-1 rounded-lg inline-block mb-2">停車場</div>
-                                <h3 class="font-bold text-lg mb-4 leading-snug text-gray-800">${point.name}</h3>
+                            <div class="w-[260px] p-1">
+                                <div class="bg-indigo-100 text-indigo-700 text-[10px] font-black px-2.5 py-1 rounded-md inline-block mb-3 uppercase tracking-wider">Carpark</div>
+                                <h3 class="font-black text-xl mb-5 leading-tight text-gray-800">${point.name}</h3>
                                 
-                                <div class="glass bg-white/70 rounded-2xl p-4 mb-5 flex justify-between items-center shadow-sm">
-                                    <div class="text-center w-full">
-                                        <div class="text-xs text-gray-500 font-bold mb-1">實時剩餘空位</div>
-                                        <div class="font-bold text-4xl ${availColor}">${point.available}</div>
-                                    </div>
+                                <div class="bg-gray-50 border border-gray-100 rounded-2xl p-5 mb-6 text-center shadow-inner">
+                                    <div class="text-[11px] text-gray-400 font-bold mb-1">實時剩餘空位</div>
+                                    <div class="font-black text-5xl ${availColor}">${avail}</div>
                                 </div>
+                                
                                 <div class="flex space-x-3">
-                                    <button onclick="app.navigate(${point.lat}, ${point.lng})" class="flex-1 bg-blue-500 text-white py-3 rounded-xl text-sm font-bold shadow-lg btn-animate active:scale-95 flex items-center justify-center"><i class="fa-solid fa-location-arrow mr-2"></i>開始導航</button>
-                                    <button onclick="uiManager.showSaveModal('${id}')" class="w-[50px] bg-white border-2 border-gray-100 text-yellow-400 py-3 rounded-xl text-lg shadow-sm btn-animate active:scale-90 flex items-center justify-center"><i class="fa-solid fa-star"></i></button>
+                                    <button onclick="app.navigate(${point.lat}, ${point.lng})" class="flex-1 bg-blue-600 text-white py-3.5 rounded-2xl text-[15px] font-black shadow-lg interactive-btn"><i class="fa-solid fa-location-arrow mr-2"></i>導航至此</button>
+                                    <button onclick="ui.openModal('save-modal', '${id}')" class="w-[55px] bg-white border-2 border-gray-100 text-yellow-400 py-3.5 rounded-2xl text-xl shadow-sm interactive-btn"><i class="fa-solid fa-star"></i></button>
                                 </div>
                             </div>`;
                     }
@@ -517,21 +588,31 @@
                     markers.push(marker);
                 });
 
-                markersGroup.addLayers(markers);
+                STATE.markersGroup.addLayers(markers);
             },
 
             navigate(lat, lng) {
+                // Universal robust navigation scheme
                 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-                if (isIOS) window.open(`http://maps.apple.com/?daddr=${lat},${lng}&dirflg=d`, '_blank');
-                else window.open(`https://www.google.com/maps/dir/?api=1`，一鍵就能直接打開${lat},${lng}`, '_blank');
+                if (isIOS) {
+                    window.open(`http://maps.apple.com/?daddr=${lat},${lng}&dirflg=d`, '_blank');
+                } else {
+                    window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
+                }
             },
 
             flyTo(lat, lng) {
-                uiManager.switchTab('map');
-                setTimeout(() => map.flyTo([lat, lng], 17, { duration: 1.5 }), 300);
+                ui.switchTab('map');
+                setTimeout(() => STATE.map.flyTo([lat, lng], 17, { duration: 1.5 }), 200);
             }
         };
 
+        // Expose to window for inline onclick handlers
+        window.ui = ui;
+        window.database = database;
+        window.app = app;
+
+        // Boot
         window.onload = () => app.init();
     </script>
 </body>
