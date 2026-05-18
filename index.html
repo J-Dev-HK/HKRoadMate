@@ -75,7 +75,9 @@
         }
         .view-section.active { display: block; }
         #map-view.active { display: block; z-index: 10; }
-        button, div { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        
+        /* 效能修復：絕不將 transition 應用於全局 div，避免 Leaflet 拖動卡頓 */
+        .glass, .glass-heavy, button, input { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
         ::-webkit-scrollbar { display: none; }
     </style>
 </head>
@@ -83,11 +85,11 @@
 
     <header class="fixed top-0 w-full glass z-40 px-6 py-4 pt-[max(env(safe-area-inset-top),1rem)] flex justify-between items-center rounded-b-3xl">
         <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-cyan-500">
-            <i class="fa-solid fa-square-parking mr-2"></i>HKRoadMate v0.0.1
+            <i class="fa-solid fa-square-parking mr-2"></i>HK Park Glass
         </h1>
         <div id="status-indicator" class="flex items-center text-xs font-semibold px-3 py-1 rounded-full glass-heavy">
             <span class="w-2 h-2 rounded-full bg-yellow-400 mr-2 animate-pulse" id="status-dot"></span>
-            <span id="status-text">Loading...</span>
+            <span id="status-text">載入中...</span>
         </div>
     </header>
 
@@ -138,20 +140,49 @@
     </div>
 
     <script>
+        // 備用測試數據 (確保在完全斷網或被阻擋時仍有畫面)
+        const MOCK_DATA = {
+            meters: [
+                { id: 'm1', type: 'meter', name: '網絡異常：請檢查連線', lat: 22.3193, lng: 114.1694, count: 5, available: 3, statusArray: [1, 0, 1, 1, 0] }
+            ]
+        };
+
         let map, markersGroup;
-        let allPointsMap = new Map(); // 改用 Map 提升效能及方便檢索
+        let allPointsMap = new Map();
         let tempItemToSave = null;
 
-        // CSV 解析器：處理政府數據
+        // 共用記憶體實例，極大提升渲染效能
+        const meterIcon = L.divIcon({
+            className: 'custom-div-icon',
+            html: `<div class="glass flex items-center justify-center w-10 h-10 rounded-full shadow-lg border-2" style="border-color:#3b82f6; background:rgba(255,255,255,0.85);"><i class="fa-solid fa-square-parking text-lg" style="color:#3b82f6"></i></div>`,
+            iconSize: [40, 40], iconAnchor: [20, 20], popupAnchor: [0, -20]
+        });
+
+        const carparkIcon = L.divIcon({
+            className: 'custom-div-icon',
+            html: `<div class="glass flex items-center justify-center w-10 h-10 rounded-full shadow-lg border-2" style="border-color:#8b5cf6; background:rgba(255,255,255,0.85);"><i class="fa-solid fa-building text-lg" style="color:#8b5cf6"></i></div>`,
+            iconSize: [40, 40], iconAnchor: [20, 20], popupAnchor: [0, -20]
+        });
+
+        // 專業級 CSV 解析器（處理引號與亂碼 BOM）
         function parseCSV(text) {
             const lines = text.split(/\r?\n/).filter(l => l.trim());
             if (lines.length === 0) return [];
-            const headers = lines[0].split(',').map(h => h.trim());
+            // 清除 BOM (\uFEFF) 與雙引號
+            const headers = lines[0].replace(/^[\uFEFF]/, '').split(',').map(h => h.replace(/^"|"$/g, '').trim());
             const result = [];
+            
             for (let i = 1; i < lines.length; i++) {
-                const values = lines[i].split(',');
+                let row = lines[i], values = [], insideQuote = false, currentVal = '';
+                for(let char of row) {
+                    if(char === '"') { insideQuote = !insideQuote; }
+                    else if (char === ',' && !insideQuote) { values.push(currentVal.trim()); currentVal = ''; }
+                    else { currentVal += char; }
+                }
+                values.push(currentVal.trim());
+                
                 const obj = {};
-                headers.forEach((h, idx) => { obj[h] = values[idx] ? values[idx].trim() : ''; });
+                headers.forEach((h, idx) => { obj[h] = values[idx] || ''; });
                 result.push(obj);
             }
             return result;
@@ -316,125 +347,133 @@
                     attribution: '© OpenStreetMap', maxZoom: 19
                 }).addTo(map);
 
-                // 開啟 chunkedLoading 確保巨量資料不會卡死 UI
+                // chunkedLoading 能確保大量標記不會卡死主線程
                 markersGroup = L.markerClusterGroup({
                     maxClusterRadius: 60, spiderfyOnMaxZoom: true, showCoverageOnHover: false, chunkedLoading: true
                 });
                 map.addLayer(markersGroup);
-                
-                // 移除了舊版的 map.on('moveend') 事件，徹底解決卡頓問題
             },
 
             async fetchData() {
                 uiManager.updateStatus('抓取全港實時數據...', 'loading');
+                allPointsMap.clear();
+
+                // 任務 1：獨立抓取停車場 (即使失敗也不影響咪錶)
                 try {
-                    // 同時請求四個數據源（政府停車場 Info/Vacancy + 咪錶 Info/Vacancy）
-                    const [cpInfoRes, cpVacRes, meterInfoRes, meterVacRes] = await Promise.all([
+                    const [cpInfoRes, cpVacRes] = await Promise.all([
                         fetch('https://api.data.gov.hk/v1/carpark-info-vacancy?data=info&lang=zh_TW'),
-                        fetch('https://api.data.gov.hk/v1/carpark-info-vacancy?data=vacancy&lang=zh_TW'),
+                        fetch('https://api.data.gov.hk/v1/carpark-info-vacancy?data=vacancy&lang=zh_TW')
+                    ]);
+                    
+                    if(cpInfoRes.ok && cpVacRes.ok) {
+                        const infoData = await cpInfoRes.json();
+                        const vacancyData = await cpVacRes.json();
+                        const vacancyMap = {};
+                        
+                        (vacancyData.results || []).forEach(v => {
+                            let count = 0;
+                            if(v.privateCar && v.privateCar.length > 0) count = parseInt(v.privateCar[0].vacancy) || 0;
+                            vacancyMap[v.park_Id] = count < 0 ? 0 : count;
+                        });
+
+                        (infoData.results || []).forEach(cp => {
+                            const lat = parseFloat(cp.latitude);
+                            const lng = parseFloat(cp.longitude);
+                            if(isNaN(lat) || isNaN(lng)) return;
+                            
+                            const id = 'cp_' + cp.park_Id;
+                            allPointsMap.set(id, {
+                                id: id, type: 'carpark', name: cp.name || '未命名停車場',
+                                lat: lat, lng: lng, isPublic: true, isIndoor: true, total: '-', 
+                                available: vacancyMap[cp.park_Id] !== undefined ? vacancyMap[cp.park_Id] : '未知'
+                            });
+                        });
+                    }
+                } catch (error) {
+                    console.log('停車場 API 載入失敗:', error);
+                }
+
+                // 任務 2：獨立抓取全港咪錶 CSV
+                try {
+                    const [meterInfoRes, meterVacRes] = await Promise.all([
                         fetch('https://resource.data.one.gov.hk/td/psiparkingspaces/spaceinfo/parkingspaces.csv'),
                         fetch('https://resource.data.one.gov.hk/td/psiparkingspaces/occupancystatus/occupancystatus.csv')
                     ]);
                     
-                    if(!cpInfoRes.ok || !meterInfoRes.ok) throw new Error('API 無法接通');
+                    if(meterInfoRes.ok && meterVacRes.ok) {
+                        const meterVacancies = parseCSV(await meterVacRes.text());
+                        const meterVacMap = {};
+                        meterVacancies.forEach(m => {
+                            // 應對政府可能改變的 Column Name，使用索引備用
+                            const spaceId = m['ParkingSpaceId'] || Object.values(m)[0];
+                            const status = m['OccupancyStatus'] || Object.values(m)[1];
+                            if(spaceId) meterVacMap[spaceId] = status;
+                        });
 
-                    // 1. 處理停車場數據
-                    const infoData = await cpInfoRes.json();
-                    const vacancyData = await cpVacRes.json();
-                    const vacancyMap = {};
-                    (vacancyData.results || []).forEach(v => {
-                        let count = 0;
-                        if(v.privateCar && v.privateCar.length > 0) count = parseInt(v.privateCar[0].vacancy) || 0;
-                        vacancyMap[v.park_Id] = count < 0 ? 0 : count;
-                    });
+                        const meters = parseCSV(await meterInfoRes.text());
+                        const streetSections = {};
 
-                    const apiCarParks = (infoData.results || []).map(cp => {
-                        return {
-                            id: 'cp_' + cp.park_Id, type: 'carpark', name: cp.name || '未命名停車場',
-                            lat: parseFloat(cp.latitude), lng: parseFloat(cp.longitude),
-                            isPublic: true, isIndoor: true, total: '-', 
-                            available: vacancyMap[cp.park_Id] !== undefined ? vacancyMap[cp.park_Id] : '未知'
-                        };
-                    }).filter(cp => !isNaN(cp.lat) && !isNaN(cp.lng));
+                        meters.forEach(m => {
+                            const lat = parseFloat(m['Latitude']);
+                            const lng = parseFloat(m['Longitude']);
+                            if(isNaN(lat) || isNaN(lng)) return; // 防呆：剔除無效座標
 
-                    // 2. 處理全港 18,000+ 咪錶數據
-                    const meterVacancies = parseCSV(await meterVacRes.text());
-                    const meterVacMap = {};
-                    meterVacancies.forEach(m => {
-                        const vals = Object.values(m);
-                        if(vals.length >= 2) meterVacMap[vals[0]] = vals[1]; // mapping SpaceID to Status
-                    });
+                            const sectionName = m['SectionOfStreet_tc'] || m['Street_tc'] || '未命名路段';
+                            const spaceId = m['ParkingSpaceId'];
+                            const status = meterVacMap[spaceId] || 'O'; 
+                            const isVacant = (status === 'V' || status === 'Vacant' || status === '0') ? 1 : 0;
 
-                    const meters = parseCSV(await meterInfoRes.text());
-                    const streetSections = {};
+                            if(!streetSections[sectionName]) {
+                                streetSections[sectionName] = {
+                                    id: 'metersec_' + sectionName, type: 'meter', name: sectionName,
+                                    latSum: 0, lngSum: 0, count: 0, available: 0, statusArray: []
+                                };
+                            }
+                            
+                            streetSections[sectionName].latSum += lat;
+                            streetSections[sectionName].lngSum += lng;
+                            streetSections[sectionName].count += 1;
+                            streetSections[sectionName].available += isVacant;
+                            streetSections[sectionName].statusArray.push(isVacant);
+                        });
 
-                    // 將咪錶以「街道段落」分組
-                    meters.forEach(m => {
-                        const lat = parseFloat(m.Latitude);
-                        const lng = parseFloat(m.Longitude);
-                        if(isNaN(lat) || isNaN(lng)) return;
-
-                        const sectionName = m.SectionOfStreet_tc || m.Street_tc || '未命名路段';
-                        const spaceId = m.ParkingSpaceId;
-                        const status = meterVacMap[spaceId] || 'O'; 
-                        const isVacant = (status === 'V' || status === 'Vacant' || status === '0') ? 1 : 0;
-
-                        if(!streetSections[sectionName]) {
-                            streetSections[sectionName] = {
-                                id: 'metersec_' + sectionName, type: 'meter', name: sectionName,
-                                latSum: 0, lngSum: 0, count: 0, available: 0, statusArray: []
-                            };
-                        }
-                        
-                        streetSections[sectionName].latSum += lat;
-                        streetSections[sectionName].lngSum += lng;
-                        streetSections[sectionName].count += 1;
-                        streetSections[sectionName].available += isVacant;
-                        streetSections[sectionName].statusArray.push(isVacant);
-                    });
-
-                    // 結算街道段落平均座標 (精準定位)
-                    const apiMeters = Object.values(streetSections).map(sec => {
-                        return {
-                            ...sec, lat: sec.latSum / sec.count, lng: sec.lngSum / sec.count
-                        };
-                    });
-
-                    // 將兩邊資料合併放入全局 Map
-                    allPointsMap.clear();
-                    [...apiCarParks, ...apiMeters].forEach(p => allPointsMap.set(p.id, p));
-                    
-                    uiManager.updateStatus('已實時更新', 'success');
-                    this.renderAllMarkers();
-
+                        // 結算中心座標
+                        Object.values(streetSections).forEach(sec => {
+                            sec.lat = sec.latSum / sec.count;
+                            sec.lng = sec.lngSum / sec.count;
+                            allPointsMap.set(sec.id, sec);
+                        });
+                    }
                 } catch (error) {
-                    console.log('獲取 API 失敗:', error);
-                    uiManager.updateStatus('連線失敗', 'error');
+                    console.log('咪錶 API 載入失敗:', error);
                 }
+
+                // 渲染檢查
+                if(allPointsMap.size > 0) {
+                    uiManager.updateStatus('已實時更新', 'success');
+                } else {
+                    uiManager.updateStatus('數據連線異常', 'error');
+                    MOCK_DATA.meters.forEach(m => allPointsMap.set(m.id, m));
+                }
+                
+                this.renderAllMarkers();
             },
 
             renderAllMarkers() {
                 markersGroup.clearLayers();
-                const markers = []; // 一次性批量加入提升極大效能
+                const markers = []; // 一次性批量載入
 
                 allPointsMap.forEach((point, id) => {
                     const isMeter = point.type === 'meter';
-                    const iconColor = isMeter ? '#3b82f6' : '#8b5cf6';
+                    // 共用 icon 提升效能
+                    const marker = L.marker([point.lat, point.lng], { icon: isMeter ? meterIcon : carparkIcon });
                     
-                    const customIcon = L.divIcon({
-                        className: 'custom-div-icon',
-                        html: `<div class="glass flex items-center justify-center w-10 h-10 rounded-full shadow-lg border-2" style="border-color:${iconColor}; background:rgba(255,255,255,0.85);">
-                                <i class="fa-solid ${isMeter ? 'fa-square-parking' : 'fa-building'} text-lg" style="color:${iconColor}"></i>
-                               </div>`,
-                        iconSize: [40, 40], iconAnchor: [20, 20], popupAnchor: [0, -20]
-                    });
-
-                    const marker = L.marker([point.lat, point.lng], { icon: customIcon });
                     let contentHtml = '';
 
                     if (isMeter) {
                         const available = point.available;
-                        const blocks = point.statusArray.map(s => `<div class="h-6 flex-1 rounded-sm ${s === 1 ? 'bg-green-400' : 'bg-red-400'}"></div>`).join('');
+                        // 利用 flex-wrap 應對超長路段的咪錶數量
+                        const blocks = point.statusArray.map(s => `<div class="h-6 w-4 flex-grow rounded-sm ${s === 1 ? 'bg-green-400' : 'bg-red-400'}"></div>`).join('');
                         contentHtml = `
                             <div class="p-2 w-64 max-h-64 overflow-y-auto">
                                 <h3 class="font-bold text-lg mb-1 leading-tight">${point.name}</h3>
