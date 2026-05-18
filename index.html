@@ -24,7 +24,7 @@
         body {
             margin: 0; padding: 0;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background: linear-gradient(-45deg, #f8f9fa, #e9ecef, #f1f3f5, #dee2e6);
+            background: linear-gradient(-45deg, #fdfbfb, #ebedee, #f5f7fa, #c3cfe2);
             background-size: 400% 400%;
             animation: gradientBG 15s ease infinite;
             overflow: hidden; height: 100vh; width: 100vw;
@@ -36,18 +36,19 @@
             100% { background-position: 0% 50%; }
         }
 
+        /* 純淨微透視白玻璃效果 */
         .glass {
-            background: rgba(255, 255, 255, 0.45);
+            background: rgba(255, 255, 255, 0.55);
             backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
             border: 1px solid rgba(255, 255, 255, 0.8);
             box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
         }
         
         .glass-heavy {
-            background: rgba(255, 255, 255, 0.85);
-            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.95);
-            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.08);
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px);
+            border: 1px solid rgba(255, 255, 255, 1);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
         }
 
         #map-container {
@@ -55,17 +56,17 @@
         }
 
         .leaflet-popup-content-wrapper, .leaflet-popup-tip {
-            background: rgba(255, 255, 255, 0.9) !important;
-            backdrop-filter: blur(12px) !important; -webkit-backdrop-filter: blur(12px) !important;
-            border: 1px solid rgba(255, 255, 255, 0.8); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
+            background: rgba(255, 255, 255, 0.95) !important;
+            backdrop-filter: blur(16px) !important; -webkit-backdrop-filter: blur(16px) !important;
+            border: 1px solid rgba(255, 255, 255, 0.9); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.15);
             border-radius: 1.5rem !important; color: #1f2937 !important;
         }
-        .leaflet-container a.leaflet-popup-close-button { color: #4b5563; padding: 8px; }
+        .leaflet-container a.leaflet-popup-close-button { color: #4b5563; padding: 12px; font-weight: bold; }
 
         .marker-cluster-small, .marker-cluster-medium, .marker-cluster-large {
-            background-color: rgba(255, 255, 255, 0.6) !important; backdrop-filter: blur(8px);
-            border: 2px solid rgba(255, 255, 255, 0.9); border-radius: 50%;
-            color: #1e3a8a !important; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            background-color: rgba(255, 255, 255, 0.7) !important; backdrop-filter: blur(8px);
+            border: 3px solid rgba(255, 255, 255, 0.95); border-radius: 50%;
+            color: #1e3a8a !important; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.15);
         }
         .marker-cluster div { background-color: transparent !important; }
 
@@ -76,8 +77,8 @@
         .view-section.active { display: block; }
         #map-view.active { display: block; z-index: 10; }
         
-        /* 效能修復：絕不將 transition 應用於全局 div，避免 Leaflet 拖動卡頓 */
-        .glass, .glass-heavy, button, input { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        /* 嚴禁應用於全局的 transition 以免引起地圖拖曳卡頓 */
+        .btn-animate { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
         ::-webkit-scrollbar { display: none; }
     </style>
 </head>
@@ -85,10 +86,10 @@
 
     <header class="fixed top-0 w-full glass z-40 px-6 py-4 pt-[max(env(safe-area-inset-top),1rem)] flex justify-between items-center rounded-b-3xl">
         <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-cyan-500">
-            <i class="fa-solid fa-square-parking mr-2"></i>HK Park Glass
+            <i class="fa-solid fa-square-parking mr-2 text-blue-500"></i>HK Park Glass
         </h1>
-        <div id="status-indicator" class="flex items-center text-xs font-semibold px-3 py-1 rounded-full glass-heavy">
-            <span class="w-2 h-2 rounded-full bg-yellow-400 mr-2 animate-pulse" id="status-dot"></span>
+        <div id="status-indicator" class="flex items-center text-xs font-semibold px-3 py-1.5 rounded-full glass-heavy">
+            <span class="w-2.5 h-2.5 rounded-full bg-yellow-400 mr-2 animate-pulse shadow-sm" id="status-dot"></span>
             <span id="status-text">載入中...</span>
         </div>
     </header>
@@ -100,7 +101,7 @@
     <main id="list-view" class="view-section px-4 pb-24 pt-28">
         <div class="flex justify-between items-center mb-6">
             <h2 class="text-2xl font-bold drop-shadow-sm text-gray-800">我的收藏清單</h2>
-            <button onclick="uiManager.showAddListModal()" class="glass-heavy px-4 py-2 rounded-2xl text-blue-600 font-semibold shadow-sm active:scale-95">
+            <button onclick="uiManager.showAddListModal()" class="glass-heavy px-4 py-2 rounded-2xl text-blue-600 font-semibold shadow-sm btn-animate active:scale-95">
                 <i class="fa-solid fa-plus mr-1"></i> 新增
             </button>
         </div>
@@ -109,85 +110,110 @@
 
     <nav class="fixed bottom-0 w-full glass-heavy pb-[env(safe-area-inset-bottom)] z-40 rounded-t-3xl">
         <div class="flex justify-around items-center h-20 px-6">
-            <button onclick="uiManager.switchTab('map')" id="tab-map" class="flex flex-col items-center justify-center w-16 text-blue-600 font-bold active:scale-90">
+            <button onclick="uiManager.switchTab('map')" id="tab-map" class="flex flex-col items-center justify-center w-16 text-blue-600 font-bold btn-animate active:scale-90">
                 <i class="fa-solid fa-map-location-dot text-2xl mb-1 drop-shadow-sm"></i>
                 <span class="text-[10px]">地圖</span>
             </button>
-            <button onclick="uiManager.switchTab('list')" id="tab-list" class="flex flex-col items-center justify-center w-16 text-gray-400 active:scale-90">
+            <button onclick="uiManager.switchTab('list')" id="tab-list" class="flex flex-col items-center justify-center w-16 text-gray-400 btn-animate active:scale-90">
                 <i class="fa-solid fa-layer-group text-2xl mb-1"></i>
                 <span class="text-[10px]">清單</span>
             </button>
         </div>
     </nav>
 
-    <div id="save-modal" class="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center opacity-0 pointer-events-none transition-opacity">
-        <div class="glass-heavy w-[90%] max-w-sm rounded-3xl p-6 transform scale-95 transition-transform" id="save-modal-content">
+    <div id="save-modal" class="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-300">
+        <div class="glass-heavy w-[90%] max-w-sm rounded-3xl p-6 transform scale-95 transition-transform duration-300" id="save-modal-content">
             <h3 class="text-lg font-bold mb-4 text-gray-800">加入收藏清單</h3>
             <div id="modal-lists-wrapper" class="space-y-3 max-h-60 overflow-y-auto mb-4"></div>
-            <button onclick="uiManager.closeModal('save-modal')" class="w-full py-3 rounded-2xl bg-gray-200/50 text-gray-700 font-semibold active:scale-95">取消</button>
+            <button onclick="uiManager.closeModal('save-modal')" class="w-full py-3 rounded-2xl bg-gray-200 text-gray-700 font-semibold btn-animate active:scale-95">取消</button>
         </div>
     </div>
 
-    <div id="create-list-modal" class="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center opacity-0 pointer-events-none transition-opacity">
-        <div class="glass-heavy w-[90%] max-w-sm rounded-3xl p-6 transform scale-95 transition-transform" id="create-list-modal-content">
+    <div id="create-list-modal" class="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-300">
+        <div class="glass-heavy w-[90%] max-w-sm rounded-3xl p-6 transform scale-95 transition-transform duration-300" id="create-list-modal-content">
             <h3 class="text-lg font-bold mb-4 text-gray-800">新增清單</h3>
             <input type="text" id="new-list-name" placeholder="例如：上班用、旺角區" class="w-full glass px-4 py-3 rounded-2xl mb-4 focus:outline-none focus:ring-2 focus:ring-blue-400 placeholder-gray-500">
             <div class="flex space-x-3">
-                <button onclick="uiManager.closeModal('create-list-modal')" class="flex-1 py-3 rounded-2xl bg-gray-200/50 text-gray-700 font-semibold active:scale-95">取消</button>
-                <button onclick="listManager.createList()" class="flex-1 py-3 rounded-2xl bg-blue-500/90 text-white font-semibold shadow-lg active:scale-95">建立</button>
+                <button onclick="uiManager.closeModal('create-list-modal')" class="flex-1 py-3 rounded-2xl bg-gray-200 text-gray-700 font-semibold btn-animate active:scale-95">取消</button>
+                <button onclick="listManager.createList()" class="flex-1 py-3 rounded-2xl bg-blue-500 text-white font-semibold shadow-lg btn-animate active:scale-95">建立</button>
             </div>
         </div>
     </div>
 
     <script>
-        // 備用測試數據 (確保在完全斷網或被阻擋時仍有畫面)
-        const MOCK_DATA = {
-            meters: [
-                { id: 'm1', type: 'meter', name: '網絡異常：請檢查連線', lat: 22.3193, lng: 114.1694, count: 5, available: 3, statusArray: [1, 0, 1, 1, 0] }
-            ]
-        };
-
         let map, markersGroup;
         let allPointsMap = new Map();
         let tempItemToSave = null;
 
-        // 共用記憶體實例，極大提升渲染效能
+        // 共用圖標，避免拖動地圖時記憶體溢出
         const meterIcon = L.divIcon({
             className: 'custom-div-icon',
-            html: `<div class="glass flex items-center justify-center w-10 h-10 rounded-full shadow-lg border-2" style="border-color:#3b82f6; background:rgba(255,255,255,0.85);"><i class="fa-solid fa-square-parking text-lg" style="color:#3b82f6"></i></div>`,
+            html: `<div class="glass flex items-center justify-center w-10 h-10 rounded-full shadow-md border-[3px] border-white"><i class="fa-solid fa-square-parking text-[22px] text-blue-500"></i></div>`,
             iconSize: [40, 40], iconAnchor: [20, 20], popupAnchor: [0, -20]
         });
 
         const carparkIcon = L.divIcon({
             className: 'custom-div-icon',
-            html: `<div class="glass flex items-center justify-center w-10 h-10 rounded-full shadow-lg border-2" style="border-color:#8b5cf6; background:rgba(255,255,255,0.85);"><i class="fa-solid fa-building text-lg" style="color:#8b5cf6"></i></div>`,
+            html: `<div class="glass flex items-center justify-center w-10 h-10 rounded-full shadow-md border-[3px] border-white"><i class="fa-solid fa-building text-[20px] text-purple-500"></i></div>`,
             iconSize: [40, 40], iconAnchor: [20, 20], popupAnchor: [0, -20]
         });
 
-        // 專業級 CSV 解析器（處理引號與亂碼 BOM）
+        // 【核心修復】智能解碼器：專門對付香港政府 CSV 的 UTF-16LE 亂碼陷阱
+        async function fetchAndDecodeCSV(url) {
+            try {
+                const res = await fetch(url);
+                if (!res.ok) throw new Error('連線失敗');
+                const buffer = await res.arrayBuffer();
+                const view = new Uint8Array(buffer);
+                
+                // 檢查是否為 UTF-16LE (BOM: FF FE)
+                if (view.length >= 2 && view[0] === 0xFF && view[1] === 0xFE) {
+                    return new TextDecoder('utf-16le').decode(buffer);
+                }
+                
+                // 預設以 UTF-8 解碼，若發現異常 Null bytes 則轉回 UTF-16LE
+                let text = new TextDecoder('utf-8').decode(buffer);
+                if (text.indexOf('\u0000') !== -1) {
+                    text = new TextDecoder('utf-16le').decode(buffer);
+                }
+                return text;
+            } catch (err) {
+                console.error('抓取失敗:', err);
+                return null;
+            }
+        }
+
+        // 防彈級 CSV 解析器
         function parseCSV(text) {
-            const lines = text.split(/\r?\n/).filter(l => l.trim());
+            if (!text) return [];
+            text = text.replace(/^\uFEFF/, ''); // 移除可能的 BOM
+            const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
             if (lines.length === 0) return [];
-            // 清除 BOM (\uFEFF) 與雙引號
-            const headers = lines[0].replace(/^[\uFEFF]/, '').split(',').map(h => h.replace(/^"|"$/g, '').trim());
+            
+            // 處理標題行的雙引號
+            const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim());
             const result = [];
             
             for (let i = 1; i < lines.length; i++) {
-                let row = lines[i], values = [], insideQuote = false, currentVal = '';
+                const row = lines[i];
+                let values = [], insideQuote = false, currentVal = '';
                 for(let char of row) {
-                    if(char === '"') { insideQuote = !insideQuote; }
+                    if (char === '"') insideQuote = !insideQuote;
                     else if (char === ',' && !insideQuote) { values.push(currentVal.trim()); currentVal = ''; }
-                    else { currentVal += char; }
+                    else currentVal += char;
                 }
                 values.push(currentVal.trim());
                 
                 const obj = {};
-                headers.forEach((h, idx) => { obj[h] = values[idx] || ''; });
+                headers.forEach((h, idx) => { 
+                    obj[h] = values[idx] ? values[idx].replace(/^"|"$/g, '') : ''; 
+                });
                 result.push(obj);
             }
             return result;
         }
 
+        // 本地清單管理系統
         const listManager = {
             getLists() {
                 const lists = localStorage.getItem('hkParkLists');
@@ -210,9 +236,7 @@
             deleteList(listId) {
                 if(listId === 'default') return alert("無法刪除預設清單");
                 if(confirm("確定刪除此清單？")) {
-                    let lists = this.getLists();
-                    lists = lists.filter(l => l.id !== listId);
-                    this.saveLists(lists);
+                    this.saveLists(this.getLists().filter(l => l.id !== listId));
                 }
             },
             addItemToList(listId, item) {
@@ -223,9 +247,7 @@
                         targetList.items.push(item);
                         this.saveLists(lists);
                         alert('已加入收藏！');
-                    } else {
-                        alert('項目已存在於此清單。');
-                    }
+                    } else alert('項目已存在於此清單。');
                 }
                 uiManager.closeModal('save-modal');
             },
@@ -242,7 +264,7 @@
                 const lists = this.getLists();
                 container.innerHTML = '';
                 
-                if(lists.length === 0) return container.innerHTML = '<div class="text-center text-gray-500 mt-10">尚無清單</div>';
+                if(lists.length === 0) return container.innerHTML = '<div class="text-center text-gray-400 mt-10 font-bold">尚無清單</div>';
 
                 lists.forEach(list => {
                     let itemsHtml = list.items.length === 0 
@@ -251,33 +273,32 @@
                             const availVal = item.available !== undefined ? item.available : (item.statusArray ? item.statusArray.filter(s=>s===1).length : 0);
                             const availColor = availVal > 0 ? 'text-green-500' : (availVal === 0 ? 'text-red-500' : 'text-gray-500');
                             return `
-                                <div class="glass p-3 rounded-2xl flex justify-between items-center mb-2 active:scale-95 transition-transform" onclick="app.flyTo(${item.lat}, ${item.lng})">
+                                <div class="glass p-3 rounded-2xl flex justify-between items-center mb-2 btn-animate active:scale-95" onclick="app.flyTo(${item.lat}, ${item.lng})">
                                     <div class="flex-1">
                                         <h4 class="font-bold text-gray-800 text-sm">${item.name}</h4>
-                                        <p class="text-xs text-gray-500">${item.type === 'carpark' ? '停車場' : '路段咪錶'}</p>
+                                        <p class="text-[10px] font-bold text-gray-400 mt-0.5">${item.type === 'carpark' ? '停車場' : '路段咪錶'}</p>
                                     </div>
                                     <div class="flex items-center space-x-3">
                                         <div class="text-right">
-                                            <span class="block text-xs text-gray-500">空位</span>
-                                            <span class="font-bold text-lg ${availColor}">${availVal}</span>
+                                            <span class="block text-[10px] text-gray-400 font-bold">空位</span>
+                                            <span class="font-bold text-lg leading-none ${availColor}">${availVal}</span>
                                         </div>
-                                        <button onclick="event.stopPropagation(); listManager.removeItem('${list.id}', '${item.id}')" class="text-red-400 p-2"><i class="fa-solid fa-trash"></i></button>
+                                        <button onclick="event.stopPropagation(); listManager.removeItem('${list.id}', '${item.id}')" class="text-red-400 bg-red-50 p-2 rounded-xl btn-animate active:scale-90"><i class="fa-solid fa-trash text-sm"></i></button>
                                     </div>
                                 </div>
                             `;
                         }).join('');
 
-                    const listCard = `
+                    container.innerHTML += `
                         <div class="glass-heavy rounded-3xl p-5 shadow-sm relative overflow-hidden">
-                            <div class="absolute top-0 left-0 w-1 h-full bg-blue-400"></div>
+                            <div class="absolute top-0 left-0 w-1.5 h-full bg-blue-400"></div>
                             <div class="flex justify-between items-center mb-4">
-                                <h3 class="text-lg font-bold text-gray-800">${list.name} <span class="text-xs font-normal text-gray-500 ml-2">${list.items.length} 項</span></h3>
-                                ${list.id !== 'default' ? `<button onclick="listManager.deleteList('${list.id}')" class="text-gray-400 hover:text-red-500"><i class="fa-solid fa-xmark"></i></button>` : ''}
+                                <h3 class="text-lg font-bold text-gray-800">${list.name} <span class="text-xs font-normal text-gray-400 ml-2 bg-gray-100 px-2 py-1 rounded-full">${list.items.length} 項</span></h3>
+                                ${list.id !== 'default' ? `<button onclick="listManager.deleteList('${list.id}')" class="text-gray-400 hover:text-red-500 bg-gray-100 w-8 h-8 rounded-full"><i class="fa-solid fa-xmark"></i></button>` : ''}
                             </div>
                             <div class="space-y-1">${itemsHtml}</div>
                         </div>
                     `;
-                    container.innerHTML += listCard;
                 });
             }
         };
@@ -303,16 +324,16 @@
             updateStatus(msg, type) {
                 document.getElementById('status-text').innerText = msg;
                 const dot = document.getElementById('status-dot');
-                dot.className = `w-2 h-2 rounded-full mr-2 ${type === 'loading' ? 'animate-pulse' : ''} ${type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-yellow-400'}`;
+                dot.className = `w-2.5 h-2.5 rounded-full mr-2 shadow-sm ${type === 'loading' ? 'animate-pulse bg-yellow-400' : type === 'success' ? 'bg-green-500' : 'bg-red-500'}`;
             },
             showSaveModal(pointId) {
                 tempItemToSave = allPointsMap.get(pointId);
                 if(!tempItemToSave) return;
                 const wrapper = document.getElementById('modal-lists-wrapper');
                 wrapper.innerHTML = listManager.getLists().map(l => `
-                    <button onclick="listManager.addItemToList('${l.id}', tempItemToSave)" class="w-full text-left px-4 py-3 glass rounded-2xl flex justify-between items-center active:scale-95">
+                    <button onclick="listManager.addItemToList('${l.id}', tempItemToSave)" class="w-full text-left px-4 py-3.5 glass rounded-2xl flex justify-between items-center btn-animate active:scale-95 mb-2">
                         <span class="font-bold text-gray-700">${l.name}</span>
-                        <i class="fa-solid fa-chevron-right text-gray-400 text-sm"></i>
+                        <i class="fa-solid fa-plus text-blue-500 text-sm bg-blue-50 w-6 h-6 flex items-center justify-center rounded-full"></i>
                     </button>
                 `).join('');
                 document.getElementById('save-modal').classList.remove('opacity-0', 'pointer-events-none');
@@ -341,13 +362,13 @@
             },
             
             initMap() {
-                map = L.map('map-container', { zoomControl: false }).setView([22.3193, 114.1694], 12);
+                map = L.map('map-container', { zoomControl: false }).setView([22.3193, 114.1694], 13);
                 L.control.zoom({ position: 'topright' }).addTo(map);
                 L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
                     attribution: '© OpenStreetMap', maxZoom: 19
                 }).addTo(map);
 
-                // chunkedLoading 能確保大量標記不會卡死主線程
+                // 效能關鍵：啟動 chunkedLoading 讓過萬點位分批載入，維持介面順暢
                 markersGroup = L.markerClusterGroup({
                     maxClusterRadius: 60, spiderfyOnMaxZoom: true, showCoverageOnHover: false, chunkedLoading: true
                 });
@@ -358,7 +379,7 @@
                 uiManager.updateStatus('抓取全港實時數據...', 'loading');
                 allPointsMap.clear();
 
-                // 任務 1：獨立抓取停車場 (即使失敗也不影響咪錶)
+                // 任務 1：停車場 API (JSON 格式，較穩定)
                 try {
                     const [cpInfoRes, cpVacRes] = await Promise.all([
                         fetch('https://api.data.gov.hk/v1/carpark-info-vacancy?data=info&lang=zh_TW'),
@@ -393,31 +414,29 @@
                     console.log('停車場 API 載入失敗:', error);
                 }
 
-                // 任務 2：獨立抓取全港咪錶 CSV
+                // 任務 2：全港咪錶 CSV (解碼核心應用)
                 try {
-                    const [meterInfoRes, meterVacRes] = await Promise.all([
-                        fetch('https://resource.data.one.gov.hk/td/psiparkingspaces/spaceinfo/parkingspaces.csv'),
-                        fetch('https://resource.data.one.gov.hk/td/psiparkingspaces/occupancystatus/occupancystatus.csv')
-                    ]);
+                    const meterInfoText = await fetchAndDecodeCSV('https://resource.data.one.gov.hk/td/psiparkingspaces/spaceinfo/parkingspaces.csv');
+                    const meterVacText = await fetchAndDecodeCSV('https://resource.data.one.gov.hk/td/psiparkingspaces/occupancystatus/occupancystatus.csv');
                     
-                    if(meterInfoRes.ok && meterVacRes.ok) {
-                        const meterVacancies = parseCSV(await meterVacRes.text());
+                    if (meterInfoText && meterVacText) {
+                        const meterVacancies = parseCSV(meterVacText);
                         const meterVacMap = {};
                         meterVacancies.forEach(m => {
-                            // 應對政府可能改變的 Column Name，使用索引備用
                             const spaceId = m['ParkingSpaceId'] || Object.values(m)[0];
                             const status = m['OccupancyStatus'] || Object.values(m)[1];
                             if(spaceId) meterVacMap[spaceId] = status;
                         });
 
-                        const meters = parseCSV(await meterInfoRes.text());
+                        const meters = parseCSV(meterInfoText);
                         const streetSections = {};
 
                         meters.forEach(m => {
                             const lat = parseFloat(m['Latitude']);
                             const lng = parseFloat(m['Longitude']);
-                            if(isNaN(lat) || isNaN(lng)) return; // 防呆：剔除無效座標
+                            if(isNaN(lat) || isNaN(lng)) return;
 
+                            // 這裡直接使用政府資料的「路段」作為分段標準
                             const sectionName = m['SectionOfStreet_tc'] || m['Street_tc'] || '未命名路段';
                             const spaceId = m['ParkingSpaceId'];
                             const status = meterVacMap[spaceId] || 'O'; 
@@ -425,7 +444,8 @@
 
                             if(!streetSections[sectionName]) {
                                 streetSections[sectionName] = {
-                                    id: 'metersec_' + sectionName, type: 'meter', name: sectionName,
+                                    id: 'metersec_' + encodeURIComponent(sectionName).substring(0,20) + Math.floor(Math.random()*1000), 
+                                    type: 'meter', name: sectionName,
                                     latSum: 0, lngSum: 0, count: 0, available: 0, statusArray: []
                                 };
                             }
@@ -437,7 +457,7 @@
                             streetSections[sectionName].statusArray.push(isVacant);
                         });
 
-                        // 結算中心座標
+                        // 結算每個「路段」的中心座標，確保地圖圖標準確落在該街道
                         Object.values(streetSections).forEach(sec => {
                             sec.lat = sec.latSum / sec.count;
                             sec.lng = sec.lngSum / sec.count;
@@ -445,15 +465,13 @@
                         });
                     }
                 } catch (error) {
-                    console.log('咪錶 API 載入失敗:', error);
+                    console.log('咪錶 CSV 解析失敗:', error);
                 }
 
-                // 渲染檢查
                 if(allPointsMap.size > 0) {
-                    uiManager.updateStatus('已實時更新', 'success');
+                    uiManager.updateStatus(`已載入 ${allPointsMap.size} 個位置`, 'success');
                 } else {
-                    uiManager.updateStatus('數據連線異常', 'error');
-                    MOCK_DATA.meters.forEach(m => allPointsMap.set(m.id, m));
+                    uiManager.updateStatus('連線異常，請稍後重試', 'error');
                 }
                 
                 this.renderAllMarkers();
@@ -461,59 +479,62 @@
 
             renderAllMarkers() {
                 markersGroup.clearLayers();
-                const markers = []; // 一次性批量載入
+                const markers = []; 
 
                 allPointsMap.forEach((point, id) => {
                     const isMeter = point.type === 'meter';
-                    // 共用 icon 提升效能
                     const marker = L.marker([point.lat, point.lng], { icon: isMeter ? meterIcon : carparkIcon });
                     
                     let contentHtml = '';
 
                     if (isMeter) {
                         const available = point.available;
-                        // 利用 flex-wrap 應對超長路段的咪錶數量
-                        const blocks = point.statusArray.map(s => `<div class="h-6 w-4 flex-grow rounded-sm ${s === 1 ? 'bg-green-400' : 'bg-red-400'}"></div>`).join('');
+                        // 利用 flex-wrap 適應任意數量的咪錶格子
+                        const blocks = point.statusArray.map(s => `<div class="h-6 min-w-[12px] flex-grow rounded-[4px] ${s === 1 ? 'bg-green-400' : 'bg-red-400 shadow-inner'}"></div>`).join('');
                         contentHtml = `
-                            <div class="p-2 w-64 max-h-64 overflow-y-auto">
-                                <h3 class="font-bold text-lg mb-1 leading-tight">${point.name}</h3>
-                                <p class="text-xs text-gray-500 mb-3">路段咪錶 (共 ${point.count} 個)</p>
-                                <div class="flex items-center justify-between mb-2">
-                                    <span class="text-sm font-semibold">即時空位</span>
-                                    <span class="text-lg font-bold ${available > 0 ? 'text-green-500' : 'text-red-500'}">${available} / ${point.count}</span>
+                            <div class="p-1 w-[260px] max-h-72 overflow-y-auto">
+                                <div class="bg-blue-50 text-blue-600 text-[10px] font-bold px-2 py-1 rounded-lg inline-block mb-2">路邊咪錶路段</div>
+                                <h3 class="font-bold text-lg mb-4 leading-snug text-gray-800">${point.name}</h3>
+                                
+                                <div class="glass bg-white/70 rounded-2xl p-3 mb-4 flex justify-between items-center shadow-sm">
+                                    <div class="text-center w-1/2 border-r border-gray-200">
+                                        <div class="text-[10px] text-gray-500 font-bold mb-1">該路段總錶位</div>
+                                        <div class="font-bold text-lg text-gray-700">${point.count}</div>
+                                    </div>
+                                    <div class="text-center w-1/2">
+                                        <div class="text-[10px] text-gray-500 font-bold mb-1">即時空位</div>
+                                        <div class="font-bold text-2xl ${available > 0 ? 'text-green-500' : 'text-red-500'}">${available}</div>
+                                    </div>
                                 </div>
-                                <div class="flex flex-wrap gap-1 w-full bg-gray-100 p-2 rounded-lg mb-4">
+                                <div class="flex flex-wrap gap-1.5 w-full bg-gray-100/80 p-2.5 rounded-xl mb-5 shadow-inner">
                                     ${blocks}
                                 </div>
-                                <div class="flex space-x-2">
-                                    <button onclick="app.navigate(${point.lat}, ${point.lng})" class="flex-1 bg-blue-500 text-white py-2 rounded-xl text-sm font-bold shadow-md"><i class="fa-solid fa-location-arrow mr-1"></i>導航</button>
-                                    <button onclick="uiManager.showSaveModal('${id}')" class="w-10 bg-yellow-400 text-white py-2 rounded-xl text-sm shadow-md"><i class="fa-solid fa-star"></i></button>
+                                <div class="flex space-x-3">
+                                    <button onclick="app.navigate(${point.lat}, ${point.lng})" class="flex-1 bg-blue-500 text-white py-3 rounded-xl text-sm font-bold shadow-lg btn-animate active:scale-95 flex items-center justify-center"><i class="fa-solid fa-location-arrow mr-2"></i>開始導航</button>
+                                    <button onclick="uiManager.showSaveModal('${id}')" class="w-[50px] bg-white border-2 border-gray-100 text-yellow-400 py-3 rounded-xl text-lg shadow-sm btn-animate active:scale-90 flex items-center justify-center"><i class="fa-solid fa-star"></i></button>
                                 </div>
                             </div>`;
                     } else {
                         const availColor = point.available > 0 ? 'text-green-500' : (point.available === 0 ? 'text-red-500' : 'text-gray-500');
                         contentHtml = `
-                            <div class="p-2 w-56">
-                                <div class="flex items-start justify-between mb-1">
-                                    <h3 class="font-bold text-lg leading-tight flex-1">${point.name}</h3>
-                                </div>
-                                <div class="flex space-x-2 mb-3">
-                                    <span class="text-[10px] px-2 py-1 rounded-full glass bg-gray-100/50">政府提供數據</span>
-                                </div>
-                                <div class="glass bg-white/60 rounded-xl p-3 mb-4 flex justify-between items-center">
+                            <div class="p-1 w-[260px]">
+                                <div class="bg-purple-50 text-purple-600 text-[10px] font-bold px-2 py-1 rounded-lg inline-block mb-2">停車場</div>
+                                <h3 class="font-bold text-lg mb-4 leading-snug text-gray-800">${point.name}</h3>
+                                
+                                <div class="glass bg-white/70 rounded-2xl p-4 mb-5 flex justify-between items-center shadow-sm">
                                     <div class="text-center w-full">
-                                        <div class="text-xs text-gray-500">實時剩餘空位</div>
-                                        <div class="font-bold text-2xl ${availColor}">${point.available}</div>
+                                        <div class="text-xs text-gray-500 font-bold mb-1">實時剩餘空位</div>
+                                        <div class="font-bold text-4xl ${availColor}">${point.available}</div>
                                     </div>
                                 </div>
-                                <div class="flex space-x-2">
-                                    <button onclick="app.navigate(${point.lat}, ${point.lng})" class="flex-1 bg-blue-500 text-white py-2 rounded-xl text-sm font-bold shadow-md"><i class="fa-solid fa-location-arrow mr-1"></i>導航</button>
-                                    <button onclick="uiManager.showSaveModal('${id}')" class="w-10 bg-yellow-400 text-white py-2 rounded-xl text-sm shadow-md"><i class="fa-solid fa-star"></i></button>
+                                <div class="flex space-x-3">
+                                    <button onclick="app.navigate(${point.lat}, ${point.lng})" class="flex-1 bg-blue-500 text-white py-3 rounded-xl text-sm font-bold shadow-lg btn-animate active:scale-95 flex items-center justify-center"><i class="fa-solid fa-location-arrow mr-2"></i>開始導航</button>
+                                    <button onclick="uiManager.showSaveModal('${id}')" class="w-[50px] bg-white border-2 border-gray-100 text-yellow-400 py-3 rounded-xl text-lg shadow-sm btn-animate active:scale-90 flex items-center justify-center"><i class="fa-solid fa-star"></i></button>
                                 </div>
                             </div>`;
                     }
 
-                    marker.bindPopup(contentHtml, { closeButton: true, minWidth: 240 });
+                    marker.bindPopup(contentHtml, { closeButton: true, minWidth: 280 });
                     markers.push(marker);
                 });
 
@@ -523,7 +544,7 @@
             navigate(lat, lng) {
                 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
                 if (isIOS) window.open(`http://maps.apple.com/?daddr=${lat},${lng}&dirflg=d`, '_blank');
-                else window.open(`https://maps.google.com/?daddr=$${lat},${lng}`, '_blank');
+                else window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
             },
 
             flyTo(lat, lng) {
