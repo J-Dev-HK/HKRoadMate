@@ -17,7 +17,6 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
 
     <style>
@@ -36,7 +35,6 @@
             100% { background-position: 0% 50%; }
         }
 
-        /* 純淨微透視白玻璃效果 */
         .glass {
             background: rgba(255, 255, 255, 0.55);
             backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
@@ -77,7 +75,6 @@
         .view-section.active { display: block; }
         #map-view.active { display: block; z-index: 10; }
         
-        /* 嚴禁應用於全局的 transition 以免引起地圖拖曳卡頓 */
         .btn-animate { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
         ::-webkit-scrollbar { display: none; }
     </style>
@@ -145,7 +142,6 @@
         let allPointsMap = new Map();
         let tempItemToSave = null;
 
-        // 共用圖標，避免拖動地圖時記憶體溢出
         const meterIcon = L.divIcon({
             className: 'custom-div-icon',
             html: `<div class="glass flex items-center justify-center w-10 h-10 rounded-full shadow-md border-[3px] border-white"><i class="fa-solid fa-square-parking text-[22px] text-blue-500"></i></div>`,
@@ -158,62 +154,37 @@
             iconSize: [40, 40], iconAnchor: [20, 20], popupAnchor: [0, -20]
         });
 
-        // 【核心修復】智能解碼器：專門對付香港政府 CSV 的 UTF-16LE 亂碼陷阱
-        async function fetchAndDecodeCSV(url) {
-            try {
-                const res = await fetch(url);
-                if (!res.ok) throw new Error('連線失敗');
-                const buffer = await res.arrayBuffer();
-                const view = new Uint8Array(buffer);
-                
-                // 檢查是否為 UTF-16LE (BOM: FF FE)
-                if (view.length >= 2 && view[0] === 0xFF && view[1] === 0xFE) {
-                    return new TextDecoder('utf-16le').decode(buffer);
-                }
-                
-                // 預設以 UTF-8 解碼，若發現異常 Null bytes 則轉回 UTF-16LE
-                let text = new TextDecoder('utf-8').decode(buffer);
-                if (text.indexOf('\u0000') !== -1) {
-                    text = new TextDecoder('utf-16le').decode(buffer);
-                }
-                return text;
-            } catch (err) {
-                console.error('抓取失敗:', err);
-                return null;
+        // 最原始、防呆的 CSV 列解析器
+        function parseCSVRow(str) {
+            let result = [], cur = '', inQuotes = false;
+            for (let i = 0; i < str.length; i++) {
+                let char = str[i];
+                if (char === '"') inQuotes = !inQuotes;
+                else if (char === ',' && !inQuotes) { result.push(cur); cur = ''; }
+                else cur += char;
             }
+            result.push(cur);
+            return result.map(v => v.replace(/^"|"$/g, '').trim());
         }
 
-        // 防彈級 CSV 解析器
+        // 防彈級 CSV 轉換器
         function parseCSV(text) {
             if (!text) return [];
-            text = text.replace(/^\uFEFF/, ''); // 移除可能的 BOM
-            const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
-            if (lines.length === 0) return [];
+            text = text.replace(/^\uFEFF/, ''); // 清除亂碼
+            const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+            if (lines.length < 2) return [];
             
-            // 處理標題行的雙引號
-            const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim());
-            const result = [];
+            // 強制將標題轉小寫，免疫所有大小寫或空白錯誤
+            const headers = parseCSVRow(lines[0]).map(h => h.toLowerCase());
             
-            for (let i = 1; i < lines.length; i++) {
-                const row = lines[i];
-                let values = [], insideQuote = false, currentVal = '';
-                for(let char of row) {
-                    if (char === '"') insideQuote = !insideQuote;
-                    else if (char === ',' && !insideQuote) { values.push(currentVal.trim()); currentVal = ''; }
-                    else currentVal += char;
-                }
-                values.push(currentVal.trim());
-                
+            return lines.slice(1).map(line => {
+                const values = parseCSVRow(line);
                 const obj = {};
-                headers.forEach((h, idx) => { 
-                    obj[h] = values[idx] ? values[idx].replace(/^"|"$/g, '') : ''; 
-                });
-                result.push(obj);
-            }
-            return result;
+                headers.forEach((h, i) => { obj[h] = values[i] || ''; });
+                return obj;
+            });
         }
 
-        // 本地清單管理系統
         const listManager = {
             getLists() {
                 const lists = localStorage.getItem('hkParkLists');
@@ -368,7 +339,6 @@
                     attribution: '© OpenStreetMap', maxZoom: 19
                 }).addTo(map);
 
-                // 效能關鍵：啟動 chunkedLoading 讓過萬點位分批載入，維持介面順暢
                 markersGroup = L.markerClusterGroup({
                     maxClusterRadius: 60, spiderfyOnMaxZoom: true, showCoverageOnHover: false, chunkedLoading: true
                 });
@@ -379,7 +349,7 @@
                 uiManager.updateStatus('抓取全港實時數據...', 'loading');
                 allPointsMap.clear();
 
-                // 任務 1：停車場 API (JSON 格式，較穩定)
+                // 1. 抓取政府停車場 API (最穩定的 JSON)
                 try {
                     const [cpInfoRes, cpVacRes] = await Promise.all([
                         fetch('https://api.data.gov.hk/v1/carpark-info-vacancy?data=info&lang=zh_TW'),
@@ -410,42 +380,46 @@
                             });
                         });
                     }
-                } catch (error) {
-                    console.log('停車場 API 載入失敗:', error);
+                } catch (e) {
+                    console.log('停車場 API 載入失敗', e);
                 }
 
-                // 任務 2：全港咪錶 CSV (解碼核心應用)
+                // 2. 抓取咪錶 CSV (使用最單純的 Fetch 與解析)
                 try {
-                    const meterInfoText = await fetchAndDecodeCSV('https://resource.data.one.gov.hk/td/psiparkingspaces/spaceinfo/parkingspaces.csv');
-                    const meterVacText = await fetchAndDecodeCSV('https://resource.data.one.gov.hk/td/psiparkingspaces/occupancystatus/occupancystatus.csv');
+                    const meterInfoRes = await fetch('https://resource.data.one.gov.hk/td/psiparkingspaces/spaceinfo/parkingspaces.csv');
+                    const meterVacRes = await fetch('https://resource.data.one.gov.hk/td/psiparkingspaces/occupancystatus/occupancystatus.csv');
                     
-                    if (meterInfoText && meterVacText) {
-                        const meterVacancies = parseCSV(meterVacText);
+                    if (meterInfoRes.ok && meterVacRes.ok) {
+                        const meterVacancies = parseCSV(await meterVacRes.text());
                         const meterVacMap = {};
+                        
                         meterVacancies.forEach(m => {
-                            const spaceId = m['ParkingSpaceId'] || Object.values(m)[0];
-                            const status = m['OccupancyStatus'] || Object.values(m)[1];
-                            if(spaceId) meterVacMap[spaceId] = status;
+                            // 動態捕捉欄位名，避免政府更改順序
+                            const keys = Object.keys(m);
+                            const spaceIdKey = keys.find(k => k.includes('spaceid')) || keys[1] || keys[0];
+                            const statusKey = keys.find(k => k.includes('status') || k.includes('occupancy')) || keys[2] || keys[1];
+                            if(m[spaceIdKey]) meterVacMap[m[spaceIdKey]] = m[statusKey];
                         });
 
-                        const meters = parseCSV(meterInfoText);
+                        const meters = parseCSV(await meterInfoRes.text());
                         const streetSections = {};
+                        let validCount = 0;
 
                         meters.forEach(m => {
-                            const lat = parseFloat(m['Latitude']);
-                            const lng = parseFloat(m['Longitude']);
+                            const lat = parseFloat(m['latitude'] || m['lat']);
+                            const lng = parseFloat(m['longitude'] || m['long'] || m['lng']);
                             if(isNaN(lat) || isNaN(lng)) return;
 
-                            // 這裡直接使用政府資料的「路段」作為分段標準
-                            const sectionName = m['SectionOfStreet_tc'] || m['Street_tc'] || '未命名路段';
-                            const spaceId = m['ParkingSpaceId'];
+                            validCount++;
+                            const sectionName = m['sectionofstreet_tc'] || m['street_tc'] || '未命名路段';
+                            const spaceId = m['parkingspaceid'];
+                            
                             const status = meterVacMap[spaceId] || 'O'; 
                             const isVacant = (status === 'V' || status === 'Vacant' || status === '0') ? 1 : 0;
 
                             if(!streetSections[sectionName]) {
                                 streetSections[sectionName] = {
-                                    id: 'metersec_' + encodeURIComponent(sectionName).substring(0,20) + Math.floor(Math.random()*1000), 
-                                    type: 'meter', name: sectionName,
+                                    id: 'metersec_' + validCount, type: 'meter', name: sectionName,
                                     latSum: 0, lngSum: 0, count: 0, available: 0, statusArray: []
                                 };
                             }
@@ -457,21 +431,27 @@
                             streetSections[sectionName].statusArray.push(isVacant);
                         });
 
-                        // 結算每個「路段」的中心座標，確保地圖圖標準確落在該街道
+                        // 結算每個路段的中心點
                         Object.values(streetSections).forEach(sec => {
                             sec.lat = sec.latSum / sec.count;
                             sec.lng = sec.lngSum / sec.count;
                             allPointsMap.set(sec.id, sec);
                         });
                     }
-                } catch (error) {
-                    console.log('咪錶 CSV 解析失敗:', error);
+                } catch (e) {
+                    console.log('咪錶 CSV 解析失敗', e);
                 }
 
-                if(allPointsMap.size > 0) {
-                    uiManager.updateStatus(`已載入 ${allPointsMap.size} 個位置`, 'success');
+                // 3. 終極保險機制：如果因為 CORS 被阻擋導致抓不到半個點，強制塞入假數據讓你能看到 UI
+                if(allPointsMap.size === 0) {
+                    uiManager.updateStatus('政府數據連線失敗，啟用展示模式', 'error');
+                    const mockMeters = [
+                        { id: 'm_mock1', type: 'meter', name: '[測試] 旺角彌敦道段', lat: 22.3193, lng: 114.1694, count: 8, available: 3, statusArray: [1, 0, 0, 1, 0, 0, 1, 0] },
+                        { id: 'm_mock2', type: 'meter', name: '[測試] 中環干諾道中', lat: 22.2828, lng: 114.1589, count: 5, available: 1, statusArray: [0, 0, 1, 0, 0] }
+                    ];
+                    mockMeters.forEach(m => allPointsMap.set(m.id, m));
                 } else {
-                    uiManager.updateStatus('連線異常，請稍後重試', 'error');
+                    uiManager.updateStatus(`已載入 ${allPointsMap.size} 個位置`, 'success');
                 }
                 
                 this.renderAllMarkers();
@@ -489,7 +469,6 @@
 
                     if (isMeter) {
                         const available = point.available;
-                        // 利用 flex-wrap 適應任意數量的咪錶格子
                         const blocks = point.statusArray.map(s => `<div class="h-6 min-w-[12px] flex-grow rounded-[4px] ${s === 1 ? 'bg-green-400' : 'bg-red-400 shadow-inner'}"></div>`).join('');
                         contentHtml = `
                             <div class="p-1 w-[260px] max-h-72 overflow-y-auto">
@@ -544,7 +523,7 @@
             navigate(lat, lng) {
                 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
                 if (isIOS) window.open(`http://maps.apple.com/?daddr=${lat},${lng}&dirflg=d`, '_blank');
-                else window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
+                else window.open(`https://www.google.com/maps/dir/?api=1`，一鍵就能直接打開${lat},${lng}`, '_blank');
             },
 
             flyTo(lat, lng) {
