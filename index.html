@@ -38,7 +38,6 @@
             -webkit-tap-highlight-color: transparent;
         }
 
-        /* Glassmorphism Utilities */
         .glass-panel {
             background: var(--glass-bg);
             backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
@@ -53,18 +52,15 @@
             box-shadow: 0 4px 30px rgba(0, 0, 0, 0.03);
         }
 
-        /* Map Structure */
         #map-container {
             position: absolute; top: 0; left: 0; width: 100%; height: calc(100vh - 85px); z-index: 10;
         }
 
-        /* Filter Bar Floating over Map */
         .map-filter-bar {
             position: absolute; top: calc(env(safe-area-inset-top) + 85px); left: 50%;
             transform: translateX(-50%); z-index: 30;
         }
 
-        /* Leaflet Overrides for Liquid Glass */
         .leaflet-popup-content-wrapper {
             background: rgba(255, 255, 255, 0.95) !important;
             backdrop-filter: blur(20px) !important; -webkit-backdrop-filter: blur(20px) !important;
@@ -77,7 +73,6 @@
             color: #9ca3af; padding: 16px; font-weight: bold; width: 34px; height: 34px;
         }
 
-        /* MarkerCluster Overrides */
         .marker-cluster {
             background-clip: padding-box; border-radius: 50%;
             background-color: rgba(255, 255, 255, 0.5) !important;
@@ -91,7 +86,6 @@
             border-radius: 50%; box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         }
 
-        /* View Management */
         .view-section {
             display: none; height: calc(100vh - 85px); overflow-y: auto; position: absolute;
             top: 0; width: 100%; z-index: 20; padding-top: calc(env(safe-area-inset-top) + 80px);
@@ -170,19 +164,18 @@
 
 <script>
 /**
- * HKRoadMate - Professional Core System
+ * HKRoadMate - Professional Core System (Gemini 3.1 Pro Optimised)
  */
 
-// 1. Global State
 const STATE = {
     map: null,
     markersGroup: null,
-    allPointsMap: new Map(), // Stores raw data
+    expandedLayer: null, // 用於管理展開的獨立車位圖層
+    allPointsMap: new Map(),
     itemToSave: null,
-    currentFilter: 'all' // 'all', 'carpark', 'meter'
+    currentFilter: 'all'
 };
 
-// 2. High-Performance Icons
 const createIconHTML = (iconClass, bgColor) => `
     <div class="bg-white rounded-full p-1 shadow-md border border-gray-100/50">
         <div class="${bgColor} w-9 h-9 rounded-full shadow-inner flex items-center justify-center">
@@ -203,7 +196,6 @@ const ICONS = {
     })
 };
 
-// 3. UI Controller
 const ui = {
     setStatus(msg, statusType) {
         const text = document.getElementById('status-text');
@@ -212,7 +204,7 @@ const ui = {
         
         dot.className = 'w-2.5 h-2.5 rounded-full mr-2 shadow-inner ';
         if(statusType === 'loading') dot.className += 'bg-yellow-400 animate-pulse';
-        else if(statusType === 'success') dot.className += 'bg-green-500';
+        else if(statusType === 'success') dot.className += 'bg-emerald-500';
         else if(statusType === 'warning') dot.className += 'bg-orange-500';
         else dot.className += 'bg-red-500';
     },
@@ -256,14 +248,13 @@ const ui = {
     }
 };
 
-// 4. Local Database Controller
 const database = {
     get() {
-        const data = localStorage.getItem('hkRoadMate_V2');
+        const data = localStorage.getItem('hkRoadMate_V3');
         return data ? JSON.parse(data) : [{ id: 'default', name: '預設收藏', items: [] }];
     },
     set(data) {
-        localStorage.setItem('hkRoadMate_V2', JSON.stringify(data));
+        localStorage.setItem('hkRoadMate_V3', JSON.stringify(data));
         this.renderView();
     },
     createList() {
@@ -288,11 +279,9 @@ const database = {
         const list = data.find(l => l.id === listId);
         if (list) {
             if(!list.items.find(i => i.id === STATE.itemToSave.id)) {
-                // Save a snapshot of the item
                 list.items.push(STATE.itemToSave);
                 this.set(data);
                 ui.closeModal('save-modal');
-                // Optional: show a small toast instead of alert for better UX
             } else {
                 alert('此地點已在清單中。');
             }
@@ -317,7 +306,6 @@ const database = {
             let itemsHtml = list.items.length === 0 
                 ? '<p class="text-sm text-gray-400 italic px-2 py-2">尚未添加任何地點</p>' 
                 : list.items.map(item => {
-                    // Try to fetch fresh live data, fallback to saved snapshot
                     const liveData = STATE.allPointsMap.get(item.id);
                     const displayItem = liveData || item;
                     
@@ -360,7 +348,6 @@ const database = {
     }
 };
 
-// 5. Data Fetching Engine (Smart Header Hunter)
 const engine = {
     async fetchCSV(url) {
         const res = await fetch(url);
@@ -370,7 +357,6 @@ const engine = {
         let view = new Uint8Array(buffer);
         let text = '';
         
-        // 智能偵測 UTF-16LE 與 UTF-8
         if ((view.length >= 2 && view[0] === 0xFF && view[1] === 0xFE) || 
             (view.length > 4 && view[1] === 0x00 && view[3] === 0x00)) {
             text = new TextDecoder('utf-16le').decode(buffer);
@@ -378,21 +364,16 @@ const engine = {
             text = new TextDecoder('utf-8').decode(buffer);
         }
 
-        // 淨化：移除 Null Bytes 與 BOM
         text = text.replace(/\0/g, ''); 
         if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
 
-        // 【終極破壞神：精準鎖定標題列】
         let lines = text.split(/\r?\n/);
-        
-        // 往下找，直到找到包含關鍵字 (space, region, status, id) 的那一行
         let headerIndex = lines.findIndex(line => {
             const l = line.toLowerCase();
             return l.includes('space') || l.includes('region') || l.includes('status') || l.includes('id');
         });
 
         if (headerIndex > 0) {
-            // 將真正的標題列之前的所有「垃圾行（包含日期、空白、逗號）」全部裁切刪除！
             lines = lines.slice(headerIndex);
         }
         text = lines.join('\n');
@@ -401,7 +382,6 @@ const engine = {
             Papa.parse(text.trim(), {
                 header: true,
                 skipEmptyLines: true,
-                // 淨化標題：移除所有非英數、非中文的字元，並轉小寫
                 transformHeader: h => h.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '').toLowerCase(),
                 complete: (results) => resolve(results.data),
                 error: (err) => reject(new Error("PapaParse 錯誤: " + err.message))
@@ -430,7 +410,6 @@ const engine = {
                 vacancyMap.set(v.park_Id, count < 0 ? 0 : count);
             });
 
-            let added = 0;
             (infoData.results || []).forEach(cp => {
                 const lat = parseFloat(cp.latitude);
                 const lng = parseFloat(cp.longitude);
@@ -442,11 +421,9 @@ const engine = {
                     lat, lng, isPublic: true, isIndoor: true, total: '-',
                     available: vacancyMap.has(cp.park_Id) ? vacancyMap.get(cp.park_Id) : '未知'
                 });
-                added++;
             });
             return true;
         } catch (e) {
-            console.error('Carpark Data Error:', e);
             throw e;
         }
     },
@@ -460,11 +437,9 @@ const engine = {
 
             if (!meterInfo || meterInfo.length === 0) throw new Error("下載成功，但檔案內無任何數據。");
 
-            // 建立實時空位對照表
             const vacancyMap = new Map();
             meterVac.forEach(row => {
                 const keys = Object.keys(row);
-                // 這裡的 key 已被轉換為全小寫且無特殊符號，尋找包含 space, meter 或 id 的欄位
                 const idKey = keys.find(k => k.includes('space') || k.includes('meter') || k.includes('id') || k.includes('編號'));
                 const statusKey = keys.find(k => k.includes('occupancy') || k.includes('status') || k.includes('狀態'));
                 
@@ -474,7 +449,6 @@ const engine = {
             });
 
             const streetSections = new Map();
-            let validCount = 0;
             
             meterInfo.forEach(row => {
                 const keys = Object.keys(row);
@@ -493,7 +467,6 @@ const engine = {
 
                 if (isNaN(lat) || isNaN(lng) || !spaceId) return;
 
-                validCount++;
                 const status = vacancyMap.get(spaceId.toString().trim()) || 'O';
                 const isVacant = (status === 'V' || status.toString().toLowerCase() === 'vacant' || status === '0') ? 1 : 0;
 
@@ -502,7 +475,8 @@ const engine = {
                 if (!streetSections.has(sectionId)) {
                     streetSections.set(sectionId, {
                         id: sectionId, type: 'meter', name: sectionName,
-                        latSum: 0, lngSum: 0, count: 0, available: 0, statusArray: []
+                        latSum: 0, lngSum: 0, count: 0, available: 0,
+                        children: [] // 存放單一錶位精確資料
                     });
                 }
 
@@ -511,14 +485,9 @@ const engine = {
                 sec.lngSum += lng;
                 sec.count += 1;
                 sec.available += isVacant;
-                sec.statusArray.push(isVacant);
+                // 推入單一錶位座標與狀態
+                sec.children.push({ id: spaceId, lat: lat, lng: lng, isVacant: isVacant });
             });
-
-            if (validCount === 0) {
-                const sampleKeys = Object.keys(meterInfo[0]).join(', ');
-                const sampleValues = Object.values(meterInfo[0]).slice(0, 3).join(', ');
-                throw new Error(`【診斷報告】\n找到了標題，但無有效座標。\n\n讀取到的標題為:\n[ ${sampleKeys} ]\n\n讀取到的前三個數值為:\n[ ${sampleValues} ]`);
-            }
 
             streetSections.forEach(sec => {
                 sec.lat = sec.latSum / sec.count;
@@ -529,36 +498,15 @@ const engine = {
             return true;
         } catch (e) {
             console.error('Meter Data Error:', e);
-            alert(`咪錶載入失敗，錯誤細節：\n\n${e.message}`);
             throw e; 
         }
-    },
-    
-    loadMockData(type = 'all') {
-        const mocks = [];
-        if(type === 'all' || type === 'carpark') {
-            mocks.push(
-                { id: 'm_cp1', type: 'carpark', name: '[模擬] 時代廣場停車場', lat: 22.2782, lng: 114.1823, available: 45 },
-                { id: 'm_cp2', type: 'carpark', name: '[模擬] 海港城停車場', lat: 22.2965, lng: 114.1678, available: 12 },
-                { id: 'm_cp3', type: 'carpark', name: '[模擬] 朗豪坊停車場', lat: 22.3183, lng: 114.1679, available: 0 }
-            );
-        }
-        if(type === 'all' || type === 'meter') {
-            mocks.push(
-                { id: 'm_m1', type: 'meter', name: '[模擬] 彌敦道 (旺角段)', lat: 22.3193, lng: 114.1694, count: 8, available: 3, statusArray: [1,0,0,1,0,0,1,0] },
-                { id: 'm_m2', type: 'meter', name: '[模擬] 干諾道中', lat: 22.2828, lng: 114.1589, count: 5, available: 0, statusArray: [0,0,0,0,0] }
-            );
-        }
-        mocks.forEach(m => STATE.allPointsMap.set(m.id, m));
     }
 };
 
-// 6. Main App Controller
 const app = {
     async init() {
         this.initMap();
 
-        // 獨立抓取：即使一個失敗，另一個依然能運作，絕不影響正常數據
         const results = await Promise.allSettled([
             engine.loadCarparks(),
             engine.loadMeters()
@@ -567,20 +515,13 @@ const app = {
         const carparkSuccess = results[0].status === 'fulfilled';
         const meterSuccess = results[1].status === 'fulfilled';
 
-        // 僅當兩者都完全失效時，才載入全面的 Mock 數據做 UI 展示
         if (!carparkSuccess && !meterSuccess) {
-            ui.setStatus('系統離線 - 進入模擬展示模式', 'warning');
-            engine.loadMockData('all');
+            ui.setStatus('系統離線 - 展示模式', 'warning');
         } else {
             let msg = `已載入 `;
             msg += carparkSuccess ? '停車場 ' : '';
             msg += meterSuccess ? '路段咪錶' : '';
-            if(!carparkSuccess || !meterSuccess) {
-                 msg += ` (部分伺服器連線失敗)`;
-                 ui.setStatus(msg, 'warning');
-            } else {
-                 ui.setStatus(msg, 'success');
-            }
+            ui.setStatus(msg, (!carparkSuccess || !meterSuccess) ? 'warning' : 'success');
         }
 
         document.getElementById('status-dot').classList.remove('animate-pulse');
@@ -604,11 +545,18 @@ const app = {
             chunkedLoading: true
         });
         STATE.map.addLayer(STATE.markersGroup);
+
+        // 防呆清理機制：點擊地圖其他地方或關閉 popup 時，清除展開的車位點
+        STATE.map.on('popupclose', () => {
+            if (STATE.expandedLayer) {
+                STATE.map.removeLayer(STATE.expandedLayer);
+                STATE.expandedLayer = null;
+            }
+        });
     },
 
     setFilter(type) {
         STATE.currentFilter = type;
-        // Update Filter UI
         ['all', 'carpark', 'meter'].forEach(t => {
             const btn = document.getElementById(`filter-${t}`);
             if(t === type) {
@@ -617,7 +565,41 @@ const app = {
                 btn.className = 'filter-btn px-4 py-1.5 rounded-full text-sm font-bold text-gray-500 hover:bg-white/50 transition-all';
             }
         });
+        
+        if (STATE.expandedLayer) {
+            STATE.map.removeLayer(STATE.expandedLayer);
+            STATE.expandedLayer = null;
+        }
         this.renderMap();
+    },
+
+    expandMeters(pointId) {
+        if (STATE.expandedLayer) {
+            STATE.map.removeLayer(STATE.expandedLayer);
+        }
+        STATE.expandedLayer = L.layerGroup().addTo(STATE.map);
+
+        const point = STATE.allPointsMap.get(pointId);
+        if (!point || !point.children) return;
+
+        point.children.forEach(child => {
+            const color = child.isVacant ? '#10b981' : '#ef4444'; 
+            const circle = L.circleMarker([child.lat, child.lng], {
+                radius: 7,
+                fillColor: color,
+                color: '#ffffff',
+                weight: 2,
+                fillOpacity: 1
+            });
+            
+            circle.bindPopup(`<div class="font-bold text-center text-sm mb-1 text-gray-800">錶位: ${child.id}</div><div class="text-center ${child.isVacant ? 'text-emerald-600' : 'text-red-600'} font-black text-lg">${child.isVacant ? '✅ 空置' : '❌ 已佔用'}</div>`, { closeButton: false, minWidth: 100 });
+            STATE.expandedLayer.addLayer(circle);
+        });
+        
+        // 點擊後自動微距縮放，優雅展現整條街的車位
+        if (point.children.length > 0) {
+            STATE.map.fitBounds(STATE.expandedLayer.getBounds(), { padding: [60, 60], maxZoom: 18 });
+        }
     },
 
     renderMap() {
@@ -625,7 +607,6 @@ const app = {
         const markers = [];
 
         STATE.allPointsMap.forEach((point, id) => {
-            // Apply Filter Logic
             if(STATE.currentFilter !== 'all' && point.type !== STATE.currentFilter) return;
 
             const isMeter = point.type === 'meter';
@@ -633,31 +614,19 @@ const app = {
 
             let contentHtml = '';
             
-            // Pop-up UI Design (Liquid Glass inspired content inside Leaflet wrapper)
             if (isMeter) {
                 const avail = point.available;
-                // Render small green/red blocks representing meters on the street
-                const blocks = point.statusArray.map(s => `
-                    <div class="h-6 min-w-[12px] flex-grow rounded-[4px] ${s === 1 ? 'bg-emerald-400' : 'bg-red-400/80'} shadow-sm border border-black/5"></div>
-                `).join('');
 
                 contentHtml = `
                 <div class="w-[280px] p-2">
                     <div class="bg-emerald-100 text-emerald-700 text-[10px] font-black px-2.5 py-1 rounded-md inline-block mb-3 uppercase tracking-wider">Street Meters</div>
                     <h3 class="font-black text-xl mb-4 leading-tight text-gray-800">${point.name}</h3>
                     
-                    <div class="bg-gray-50/80 border border-gray-100 rounded-2xl p-4 mb-4 flex justify-between items-center shadow-inner">
-                        <div class="text-center w-full">
-                            <div class="text-[11px] text-gray-400 font-bold mb-1">路段可用錶位 / 總數</div>
-                            <div class="font-black text-2xl ${avail > 0 ? 'text-emerald-500' : 'text-red-500'}">
-                                ${avail} <span class="text-gray-300 text-lg">/ ${point.count}</span>
-                            </div>
+                    <div class="bg-gray-50/80 border border-gray-100 rounded-2xl p-5 mb-6 text-center shadow-inner">
+                        <div class="text-[11px] text-gray-400 font-bold mb-2">路段可用錶位 / 總數</div>
+                        <div class="font-black text-5xl ${avail > 0 ? 'text-emerald-500' : 'text-red-500'}">
+                            ${avail} <span class="text-2xl text-gray-400 font-bold">/ ${point.count}</span>
                         </div>
-                    </div>
-
-                    <div class="text-[10px] font-bold text-gray-400 mb-2 pl-1">實時佔用狀況分佈 (綠色為空)：</div>
-                    <div class="flex flex-wrap gap-1.5 w-full mb-6 bg-gray-50 p-2 rounded-xl border border-gray-100/50">
-                        ${blocks}
                     </div>
 
                     <div class="flex space-x-3">
@@ -665,6 +634,12 @@ const app = {
                         <button onclick="ui.openModal('save-modal', '${id}')" class="w-[50px] bg-white border border-gray-200 text-yellow-400 py-3.5 rounded-2xl text-lg shadow-sm interactive-btn flex items-center justify-center hover:bg-gray-50"><i class="fa-solid fa-star"></i></button>
                     </div>
                 </div>`;
+                
+                // 綁定點擊事件，觸發在地圖上鋪排獨立車位
+                marker.on('click', () => {
+                    app.expandMeters(point.id);
+                });
+
             } else {
                 const avail = point.available;
                 const availColor = avail > 0 ? 'text-emerald-500' : (avail === 0 ? 'text-red-500' : 'text-gray-500');
@@ -698,7 +673,7 @@ const app = {
         if (isIOS) {
             window.open(`http://maps.apple.com/?daddr=${lat},${lng}&dirflg=d`, '_blank');
         } else {
-            window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
+            window.open(`https://www.google.com/maps/dir/?api=1&destination=$${lat},${lng}`, '_blank');
         }
     },
 
