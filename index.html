@@ -360,7 +360,7 @@ const database = {
     }
 };
 
-// 5. Data Fetching Engine (Date-Bypass Parser)
+// 5. Data Fetching Engine (Smart Header Hunter)
 const engine = {
     async fetchCSV(url) {
         const res = await fetch(url);
@@ -378,15 +378,22 @@ const engine = {
             text = new TextDecoder('utf-8').decode(buffer);
         }
 
-        // 終極淨化：移除 Null Bytes 與 BOM
+        // 淨化：移除 Null Bytes 與 BOM
         text = text.replace(/\0/g, ''); 
         if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
 
-        // 【破解核心陷阱：移除首行時間戳】
+        // 【終極破壞神：精準鎖定標題列】
         let lines = text.split(/\r?\n/);
-        // 如果該行欄位少於 3 個（代表沒有足夠的逗號），就當作是政府塞入的日期戳記，直接丟棄！
-        while (lines.length > 0 && lines[0].split(',').length < 3) {
-            lines.shift();
+        
+        // 往下找，直到找到包含關鍵字 (space, region, status, id) 的那一行
+        let headerIndex = lines.findIndex(line => {
+            const l = line.toLowerCase();
+            return l.includes('space') || l.includes('region') || l.includes('status') || l.includes('id');
+        });
+
+        if (headerIndex > 0) {
+            // 將真正的標題列之前的所有「垃圾行（包含日期、空白、逗號）」全部裁切刪除！
+            lines = lines.slice(headerIndex);
         }
         text = lines.join('\n');
 
@@ -453,11 +460,12 @@ const engine = {
 
             if (!meterInfo || meterInfo.length === 0) throw new Error("下載成功，但檔案內無任何數據。");
 
-            // 建立實時空位對照表 (兼容中英文標題)
+            // 建立實時空位對照表
             const vacancyMap = new Map();
             meterVac.forEach(row => {
                 const keys = Object.keys(row);
-                const idKey = keys.find(k => k.includes('spaceid') || k.includes('meterid') || k.includes('編號'));
+                // 這裡的 key 已被轉換為全小寫且無特殊符號，尋找包含 space, meter 或 id 的欄位
+                const idKey = keys.find(k => k.includes('space') || k.includes('meter') || k.includes('id') || k.includes('編號'));
                 const statusKey = keys.find(k => k.includes('occupancy') || k.includes('status') || k.includes('狀態'));
                 
                 if (idKey && statusKey && row[idKey]) {
@@ -470,12 +478,11 @@ const engine = {
             
             meterInfo.forEach(row => {
                 const keys = Object.keys(row);
-                // 多語言與防呆比對
                 const latKey = keys.find(k => k.includes('lat') || k.includes('緯度'));
                 const lngKey = keys.find(k => k.includes('long') || k.includes('lng') || k.includes('經度'));
                 const streetKeys = keys.filter(k => k.includes('street') || k.includes('address') || k.includes('街道') || k.includes('路段'));
                 const streetKey = streetKeys.find(k => k.includes('tc') || k.includes('中文')) || streetKeys[0];
-                const idKey = keys.find(k => k.includes('spaceid') || k.includes('meterid') || k.includes('編號'));
+                const idKey = keys.find(k => k.includes('space') || k.includes('meter') || k.includes('id') || k.includes('編號'));
 
                 if (!latKey || !lngKey || !idKey) return;
 
@@ -507,11 +514,10 @@ const engine = {
                 sec.statusArray.push(isVacant);
             });
 
-            // 如果全部失敗，印出診斷報告
             if (validCount === 0) {
                 const sampleKeys = Object.keys(meterInfo[0]).join(', ');
                 const sampleValues = Object.values(meterInfo[0]).slice(0, 3).join(', ');
-                throw new Error(`【診斷報告】\n無法識別欄位名稱。\n\n系統讀取到的標題為:\n[ ${sampleKeys} ]\n\n系統讀取到的前三個數值為:\n[ ${sampleValues} ]`);
+                throw new Error(`【診斷報告】\n找到了標題，但無有效座標。\n\n讀取到的標題為:\n[ ${sampleKeys} ]\n\n讀取到的前三個數值為:\n[ ${sampleValues} ]`);
             }
 
             streetSections.forEach(sec => {
@@ -534,18 +540,13 @@ const engine = {
             mocks.push(
                 { id: 'm_cp1', type: 'carpark', name: '[模擬] 時代廣場停車場', lat: 22.2782, lng: 114.1823, available: 45 },
                 { id: 'm_cp2', type: 'carpark', name: '[模擬] 海港城停車場', lat: 22.2965, lng: 114.1678, available: 12 },
-                { id: 'm_cp3', type: 'carpark', name: '[模擬] 朗豪坊停車場', lat: 22.3183, lng: 114.1679, available: 0 },
-                { id: 'm_cp4', type: 'carpark', name: '[模擬] APM 停車場', lat: 22.3121, lng: 114.2250, available: 88 },
-                { id: 'm_cp5', type: 'carpark', name: '[模擬] IFC 停車場', lat: 22.2849, lng: 114.1583, available: 5 }
+                { id: 'm_cp3', type: 'carpark', name: '[模擬] 朗豪坊停車場', lat: 22.3183, lng: 114.1679, available: 0 }
             );
         }
         if(type === 'all' || type === 'meter') {
             mocks.push(
                 { id: 'm_m1', type: 'meter', name: '[模擬] 彌敦道 (旺角段)', lat: 22.3193, lng: 114.1694, count: 8, available: 3, statusArray: [1,0,0,1,0,0,1,0] },
-                { id: 'm_m2', type: 'meter', name: '[模擬] 干諾道中', lat: 22.2828, lng: 114.1589, count: 5, available: 0, statusArray: [0,0,0,0,0] },
-                { id: 'm_m3', type: 'meter', name: '[模擬] 軒尼詩道', lat: 22.2795, lng: 114.1755, count: 6, available: 6, statusArray: [1,1,1,1,1,1] },
-                { id: 'm_m4', type: 'meter', name: '[模擬] 漆咸道南', lat: 22.2985, lng: 114.1751, count: 10, available: 2, statusArray: [0,0,1,0,0,0,1,0,0,0] },
-                { id: 'm_m5', type: 'meter', name: '[模擬] 渣華道', lat: 22.2922, lng: 114.2014, count: 4, available: 1, statusArray: [0,1,0,0] }
+                { id: 'm_m2', type: 'meter', name: '[模擬] 干諾道中', lat: 22.2828, lng: 114.1589, count: 5, available: 0, statusArray: [0,0,0,0,0] }
             );
         }
         mocks.forEach(m => STATE.allPointsMap.set(m.id, m));
