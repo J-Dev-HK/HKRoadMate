@@ -47,7 +47,7 @@
             transition: all 0.3s ease;
         }
 
-        /* 🌟 黑暗模式增強版 */
+        /* 黑暗模式增強版 */
         body.dark-mode {
             background: linear-gradient(135deg, #111827 0%, #1f2937 100%);
             color: #f3f4f6;
@@ -61,7 +61,7 @@
         body.dark-mode .text-gray-400 { color: #9ca3af !important; }
         body.dark-mode .border-gray-100, body.dark-mode .border-gray-200 { border-color: #4b5563 !important; }
         
-        /* 地圖暗黑渲染 */
+        /* 地圖暗黑渲染優化，不痴底且清晰 */
         body.dark-mode .leaflet-layer {
             filter: invert(90%) hue-rotate(180deg) brightness(110%) contrast(85%) saturate(80%);
         }
@@ -155,7 +155,7 @@
                 </button>
                 <div class="glass-panel rounded-[2rem] p-5 shadow-sm mt-4">
                     <div class="flex items-center text-gray-800 font-bold text-lg mb-3"><i class="fa-solid fa-map text-blue-500 w-8"></i>地圖引擎狀態</div>
-                    <p class="text-xs font-bold text-gray-500 leading-relaxed pl-8">Leaflet.js 動態渲染<br>Canvas 硬體加速啟動中<br>智慧縮放深度剖析啟用</p>
+                    <p class="text-xs font-bold text-gray-500 leading-relaxed pl-8">Leaflet.js 動態渲染<br>Canvas 硬體加速啟動中<br>智慧縮放與異常資料過濾啟用</p>
                 </div>
             </div>
         </div>
@@ -252,7 +252,7 @@
 const STATE = {
     map: null,
     markersGroup: null,
-    expandedLayer: null, 
+    detailLayer: null, 
     allPointsMap: new Map(),
     itemToSave: null,
     currentFilter: 'all',
@@ -271,7 +271,6 @@ const ICONS = {
     })
 };
 
-// 設定與暗黑模式控制器
 const settingsCtrl = {
     init() {
         const isDark = localStorage.getItem('hkrm_dark') === 'true';
@@ -348,12 +347,9 @@ const bottomSheet = {
     },
     close() {
         this.snap('hidden');
-        STATE.clickedGroupId = null; // 清除點擊狀態
-        if (STATE.expandedLayer) {
-            STATE.map.removeLayer(STATE.expandedLayer);
-            STATE.expandedLayer = null;
-        }
-        app.renderMap(); // 重新渲染地圖，使群組圖標恢復顯示
+        STATE.clickedGroupId = null; // 關閉時清除點擊狀態
+        app.renderMap(); // 重新渲染，使隱藏的群組圖標恢復顯示
+        app.updateMeterVisibility(); // 根據現有縮放級別處理細節車位
     }
 };
 
@@ -561,17 +557,21 @@ const engine = {
 
                 if (!latKey || !lngKey || !idKey) return;
                 const lat = parseFloat(row[latKey]), lng = parseFloat(row[lngKey]);
+                
+                // 🌟 異常資料矯正器：防止座標飄移至外海，或者駱克道跑到西貢的問題
                 if (isNaN(lat) || isNaN(lng) || lat < 22.1 || lat > 22.6 || lng < 113.8 || lng > 114.5) return;
+                const sectionName = (streetKey && row[streetKey]) ? row[streetKey].trim() : '未命名路段';
+                // 駱克道防呆機制：駱克道絕不可能經度大於 114.2
+                if (sectionName.includes('駱克') && lng > 114.2) return;
 
                 const cleanSpaceId = this.cleanId(row[idKey]); 
-                const sectionName = (streetKey && row[streetKey]) ? row[streetKey].trim() : '未命名路段';
                 const status = vacancyMap.get(cleanSpaceId) || 'O';
                 const isVacant = (status.trim().toUpperCase() === 'V' || status === '0') ? 1 : 0;
 
                 let streetGroups = streetGroupsMap.get(sectionName);
                 if (!streetGroups) { streetGroups = []; streetGroupsMap.set(sectionName, streetGroups); }
 
-                // 🌟 群組範圍收緊至 150米，分佈更精準
+                // 🌟 收緊範圍至 150米
                 let foundGroup = null;
                 for (let group of streetGroups) {
                     if (engine.getDistance(group.lat, group.lng, lat, lng) <= 150) { foundGroup = group; break; }
@@ -605,6 +605,7 @@ const app = {
         else ui.setStatus(`已載入 ${carparkSuccess ? '停車場 ' : ''}${meterSuccess ? '路段咪錶' : ''}`, 'success');
         document.getElementById('status-dot').classList.remove('animate-pulse');
         
+        STATE.detailLayer = L.layerGroup().addTo(STATE.map); 
         this.renderMap();
         database.renderView();
     },
@@ -621,18 +622,50 @@ const app = {
         });
         STATE.map.addLayer(STATE.markersGroup);
 
-        // 🌟 獨立車位大小動態比例 (取得完美平衡)
-        STATE.map.on('zoomend', () => {
-            if (STATE.expandedLayer) {
-                const z = STATE.map.getZoom();
-                const newRadius = Math.max(5, Math.min(16, (z - 16) * 2 + 6));
-                STATE.expandedLayer.eachLayer(layer => {
-                    if(layer.setRadius) layer.setRadius(newRadius);
+        STATE.map.on('moveend', () => { this.updateMeterVisibility(); });
+        STATE.map.on('zoomend', () => { this.updateMeterVisibility(); });
+        STATE.map.on('click', () => { bottomSheet.close(); });
+    },
+
+    // 🌟 全新視圖與點擊互動邏輯
+    updateMeterVisibility() {
+        const zoom = STATE.map.getZoom();
+        const bounds = STATE.map.getBounds();
+        
+        STATE.detailLayer.clearLayers();
+
+        STATE.allPointsMap.forEach(point => {
+            if (point.type !== 'meter') return;
+            
+            const isHighlighted = (point.id === STATE.clickedGroupId);
+            
+            // 只有當地圖放到最大 (>=17) 且在視窗內，或是被點擊聚焦的群組時，才會繪製獨立車位
+            if ((zoom >= 17 && bounds.contains([point.lat, point.lng])) || isHighlighted) {
+                
+                point.children.forEach(child => {
+                    const color = child.isVacant ? '#10b981' : '#ef4444'; 
+                    const borderColor = isHighlighted ? '#fbbf24' : '#ffffff'; 
+                    const weight = isHighlighted ? 2.5 : 1.5;
+                    
+                    // 🌟 縮小且完美平衡的黃金比例尺寸
+                    // 基本大小3px~6px，最高亮為4px~8px，保證不重疊
+                    const baseRadius = isHighlighted ? 4 : 3;
+                    const maxRadius = isHighlighted ? 8 : 6;
+                    const radius = Math.max(baseRadius, Math.min(maxRadius, (zoom - 16) * 1.5 + baseRadius));
+
+                    const circle = L.circleMarker([child.lat, child.lng], {
+                        radius: radius, fillColor: color, color: borderColor, weight: weight, fillOpacity: 0.95
+                    });
+                    
+                    circle.bindPopup(`
+                        <div class="font-bold text-center text-xs mb-0.5 text-gray-500">ID: ${child.id}</div>
+                        <div class="text-center ${child.isVacant ? 'text-emerald-600' : 'text-red-600'} font-black text-base">${child.isVacant ? '✅ 空置' : '❌ 已佔用'}</div>
+                    `, { closeButton: false, minWidth: 80, offset: [0, -5] });
+                    
+                    STATE.detailLayer.addLayer(circle);
                 });
             }
         });
-        
-        STATE.map.on('click', () => { bottomSheet.close(); });
     },
 
     setFilter(type) {
@@ -647,19 +680,20 @@ const app = {
             }
         });
         bottomSheet.close(); 
-        this.renderMap();
     },
 
     showDetails(pointId) {
         const point = STATE.allPointsMap.get(pointId);
         if (!point) return;
 
-        STATE.clickedGroupId = pointId; // 設定被點擊的群組 ID，藉此隱藏群組圖標
+        STATE.clickedGroupId = pointId; // 設定點擊狀態
 
-        // 自動放大聚焦，並為下方 Bottom Sheet 預留空間
+        // 🌟 計算真正視覺正中央的完美偏移運算 (扣除 Bottom Sheet 的遮擋)
         const targetZoom = STATE.map.getZoom() < 18 ? 18 : STATE.map.getZoom();
         const projectedCenter = STATE.map.project([point.lat, point.lng], targetZoom);
-        projectedCenter.y -= window.innerHeight * 0.15; // 偏上方顯示
+        // 畫面中心往下移 (座標數字變大代表往下，即地圖往下平移，點位向上升)
+        // 螢幕高度的 22.5% 是完美的偏移量，剛好落在剩餘 55% 視窗的正中間
+        projectedCenter.y += window.innerHeight * 0.225; 
         const targetLatLng = STATE.map.unproject(projectedCenter, targetZoom);
         
         STATE.map.flyTo(targetLatLng, targetZoom, { animate: true, duration: 0.6 });
@@ -682,8 +716,6 @@ const app = {
                 <button onclick="ui.openModal('save-modal', '${pointId}')" class="w-[60px] bg-white border border-gray-200 text-yellow-400 py-4 rounded-2xl text-xl shadow-sm interactive-btn flex items-center justify-center"><i class="fa-solid fa-star"></i></button>
             </div>`;
             
-            this.renderMap(); // 重新渲染以隱藏該群組的圖標
-            this.expandMeters(point);
         } else {
             const avail = point.available; const total = point.total;
             const availColor = avail > 0 ? 'text-emerald-500' : (avail === 0 ? 'text-red-500' : 'text-gray-500');
@@ -703,29 +735,9 @@ const app = {
             </div>`;
         }
 
+        this.renderMap(); // 呼叫重繪以隱藏被點擊的群組圖標
+        this.updateMeterVisibility(); // 呼叫繪製高亮的獨立車位點
         bottomSheet.open(contentHtml);
-    },
-
-    expandMeters(point) {
-        if (STATE.expandedLayer) STATE.map.removeLayer(STATE.expandedLayer);
-        STATE.expandedLayer = L.layerGroup().addTo(STATE.map);
-
-        const currentZoom = STATE.map.getZoom();
-        const initialRadius = Math.max(5, Math.min(16, (currentZoom - 16) * 2 + 6));
-
-        point.children.forEach(child => {
-            const color = child.isVacant ? '#10b981' : '#ef4444'; 
-            const circle = L.circleMarker([child.lat, child.lng], {
-                radius: initialRadius, fillColor: color, color: '#fbbf24', weight: 2.5, fillOpacity: 0.95 // 黃金光暈醒目提示
-            });
-            
-            circle.bindPopup(`
-                <div class="font-bold text-center text-xs mb-0.5 text-gray-500">ID: ${child.id}</div>
-                <div class="text-center ${child.isVacant ? 'text-emerald-600' : 'text-red-600'} font-black text-base">${child.isVacant ? '✅ 空置' : '❌ 已佔用'}</div>
-            `, { closeButton: false, minWidth: 80, offset: [0, -5] });
-            
-            STATE.expandedLayer.addLayer(circle);
-        });
     },
 
     renderMap() {
@@ -734,7 +746,7 @@ const app = {
 
         STATE.allPointsMap.forEach((point, id) => {
             if(STATE.currentFilter !== 'all' && point.type !== STATE.currentFilter) return;
-            // 🌟 如果該群組目前被點擊且展開中，則不渲染它的群組圖標，讓出畫面給單一車位
+            // 🌟 點擊群組時，該群組圖標隱藏
             if(id === STATE.clickedGroupId) return;
 
             let markerIcon;
@@ -764,7 +776,7 @@ const app = {
         STATE.markersGroup.addLayers(markers);
     },
 
-    // 🌟 完美修復導航：換上正確的 Google Maps Directions API 格式
+    // 🌟 修正後的完美官方導航連結格式
     navigate(lat, lng) {
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
         if (isIOS) window.open(`http://maps.apple.com/?daddr=${lat},${lng}&dirflg=d`, '_blank');
