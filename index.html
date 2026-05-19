@@ -56,9 +56,16 @@
             position: absolute; top: 0; left: 0; width: 100%; height: calc(100vh - 85px); z-index: 10;
         }
 
+        /* 終極解決排行與擠壓的完美篩選欄樣式 */
         .map-filter-bar {
-            position: absolute; top: calc(env(safe-area-inset-top) + 85px); left: 50%;
-            transform: translateX(-50%); z-index: 30;
+            position: absolute; 
+            top: calc(env(safe-area-inset-top) + 85px); 
+            left: 50%;
+            transform: translateX(-50%); 
+            z-index: 30;
+            width: calc(100% - 32px);
+            max-w: 340px;
+            display: flex;
         }
 
         .leaflet-popup-content-wrapper {
@@ -78,10 +85,10 @@
             background-color: rgba(255, 255, 255, 0.5) !important;
         }
         .marker-cluster div {
-            width: 36px; height: 36px; margin: 2px;
+            width: 38px; height: 38px; margin: 2px;
             background-color: rgba(255, 255, 255, 0.9) !important;
             backdrop-filter: blur(10px); border: 2px solid white;
-            color: #1e3a8a !important; font-weight: 800; font-size: 14px;
+            color: #1e3a8a !important; font-weight: 800; font-size: 13px;
             display: flex; align-items: center; justify-content: center;
             border-radius: 50%; box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         }
@@ -112,10 +119,10 @@
     </header>
 
     <main id="map-view" class="view-section active">
-        <div class="map-filter-bar glass-panel rounded-full p-1 flex space-x-1 shadow-lg border border-white">
-            <button onclick="app.setFilter('all')" id="filter-all" class="filter-btn px-4 py-1.5 rounded-full text-sm font-bold bg-blue-500 text-white shadow-sm transition-all">全部</button>
-            <button onclick="app.setFilter('carpark')" id="filter-carpark" class="filter-btn px-4 py-1.5 rounded-full text-sm font-bold text-gray-500 hover:bg-white/50 transition-all">停車場</button>
-            <button onclick="app.setFilter('meter')" id="filter-meter" class="filter-btn px-4 py-1.5 rounded-full text-sm font-bold text-gray-500 hover:bg-white/50 transition-all">咪錶</button>
+        <div class="map-filter-bar glass-panel rounded-full p-1 flex space-x-1 shadow-lg border border-white whitespace-nowrap">
+            <button onclick="app.setFilter('all')" id="filter-all" class="filter-btn flex-1 text-center py-2 rounded-full text-xs font-black bg-blue-600 text-white shadow-sm transition-all duration-200">全部</button>
+            <button onclick="app.setFilter('carpark')" id="filter-carpark" class="filter-btn flex-1 text-center py-2 rounded-full text-xs font-black text-gray-500 hover:bg-white/50 transition-all duration-200">停車場</button>
+            <button onclick="app.setFilter('meter')" id="filter-meter" class="filter-btn flex-1 text-center py-2 rounded-full text-xs font-black text-gray-500 hover:bg-white/50 transition-all duration-200">路邊咪錶</button>
         </div>
         <div id="map-container"></div>
     </main>
@@ -164,13 +171,13 @@
 
 <script>
 /**
- * HKRoadMate - Professional Core System (Gemini 3.1 Pro Optimised)
+ * HKRoadMate - Professional Core System (Gemini 3.1 Pro Architecture)
  */
 
 const STATE = {
     map: null,
     markersGroup: null,
-    expandedLayer: null, // 用於管理展開的獨立車位圖層
+    expandedLayer: null, 
     allPointsMap: new Map(),
     itemToSave: null,
     currentFilter: 'all'
@@ -184,11 +191,6 @@ const createIconHTML = (iconClass, bgColor) => `
     </div>`;
 
 const ICONS = {
-    meter: L.divIcon({
-        className: 'custom-icon',
-        html: createIconHTML('fa-square-parking', 'bg-emerald-500'),
-        iconSize: [44, 44], iconAnchor: [22, 22], popupAnchor: [0, -22]
-    }),
     carpark: L.divIcon({
         className: 'custom-icon',
         html: createIconHTML('fa-car', 'bg-blue-600'),
@@ -457,26 +459,43 @@ const engine = {
                 const streetKeys = keys.filter(k => k.includes('street') || k.includes('address') || k.includes('街道') || k.includes('路段'));
                 const streetKey = streetKeys.find(k => k.includes('tc') || k.includes('中文')) || streetKeys[0];
                 const idKey = keys.find(k => k.includes('space') || k.includes('meter') || k.includes('id') || k.includes('編號'));
+                
+                // 讀取分區以防重名錯誤
+                const subLocKeys = keys.filter(k => k.includes('sublocality') || k.includes('district') || k.includes('地區') || k.includes('區'));
+                const subLocKey = subLocKeys.find(k => k.includes('tc') || k.includes('中文')) || subLocKeys[0];
 
                 if (!latKey || !lngKey || !idKey) return;
 
                 const lat = parseFloat(row[latKey]);
                 const lng = parseFloat(row[lngKey]);
                 const spaceId = row[idKey];
-                const sectionName = (streetKey && row[streetKey]) ? row[streetKey].trim() : '未命名路段';
+                
+                let sectionName = (streetKey && row[streetKey]) ? row[streetKey].trim() : '';
+                const subLocName = (subLocKey && row[subLocKey]) ? row[subLocKey].trim() : '';
+
+                if (!sectionName) {
+                    sectionName = subLocName || '未命名路段';
+                }
 
                 if (isNaN(lat) || isNaN(lng) || !spaceId) return;
 
                 const status = vacancyMap.get(spaceId.toString().trim()) || 'O';
                 const isVacant = (status === 'V' || status.toString().toLowerCase() === 'vacant' || status === '0') ? 1 : 0;
 
-                const sectionId = 'metersec_' + sectionName.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '');
+                // 🌟 【網格化地理算法修復】: 依據座標劃分 ~300米街區，避免長度數公里的道路出現平均值偏離
+                const gridId = Math.floor(lat * 300) + '_' + Math.floor(lng * 300);
+                const sectionId = 'metersec_' + sectionName.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '') + '_' + gridId;
                 
+                let finalDisplayName = sectionName;
+                if (subLocName && !finalDisplayName.includes(subLocName)) {
+                    finalDisplayName = `${sectionName} (${subLocName})`;
+                }
+
                 if (!streetSections.has(sectionId)) {
                     streetSections.set(sectionId, {
-                        id: sectionId, type: 'meter', name: sectionName,
+                        id: sectionId, type: 'meter', name: finalDisplayName,
                         latSum: 0, lngSum: 0, count: 0, available: 0,
-                        children: [] // 存放單一錶位精確資料
+                        children: []
                     });
                 }
 
@@ -485,7 +504,6 @@ const engine = {
                 sec.lngSum += lng;
                 sec.count += 1;
                 sec.available += isVacant;
-                // 推入單一錶位座標與狀態
                 sec.children.push({ id: spaceId, lat: lat, lng: lng, isVacant: isVacant });
             });
 
@@ -520,7 +538,7 @@ const app = {
         } else {
             let msg = `已載入 `;
             msg += carparkSuccess ? '停車場 ' : '';
-            msg += meterSuccess ? '路段咪錶' : '';
+            msg += meterSuccess ? '路邊咪錶' : '';
             ui.setStatus(msg, (!carparkSuccess || !meterSuccess) ? 'warning' : 'success');
         }
 
@@ -538,7 +556,7 @@ const app = {
         }).addTo(STATE.map);
 
         STATE.markersGroup = L.markerClusterGroup({
-            maxClusterRadius: 50,
+            maxClusterRadius: 40,
             spiderfyOnMaxZoom: true,
             showCoverageOnHover: false,
             zoomToBoundsOnClick: true,
@@ -546,7 +564,6 @@ const app = {
         });
         STATE.map.addLayer(STATE.markersGroup);
 
-        // 防呆清理機制：點擊地圖其他地方或關閉 popup 時，清除展開的車位點
         STATE.map.on('popupclose', () => {
             if (STATE.expandedLayer) {
                 STATE.map.removeLayer(STATE.expandedLayer);
@@ -560,9 +577,9 @@ const app = {
         ['all', 'carpark', 'meter'].forEach(t => {
             const btn = document.getElementById(`filter-${t}`);
             if(t === type) {
-                btn.className = 'filter-btn px-4 py-1.5 rounded-full text-sm font-bold bg-blue-500 text-white shadow-sm transition-all';
+                btn.className = 'filter-btn flex-1 text-center py-2 rounded-full text-xs font-black bg-blue-600 text-white shadow-sm transition-all duration-200';
             } else {
-                btn.className = 'filter-btn px-4 py-1.5 rounded-full text-sm font-bold text-gray-500 hover:bg-white/50 transition-all';
+                btn.className = 'filter-btn flex-1 text-center py-2 rounded-full text-xs font-black text-gray-500 hover:bg-white/50 transition-all duration-200';
             }
         });
         
@@ -596,7 +613,6 @@ const app = {
             STATE.expandedLayer.addLayer(circle);
         });
         
-        // 點擊後自動微距縮放，優雅展現整條街的車位
         if (point.children.length > 0) {
             STATE.map.fitBounds(STATE.expandedLayer.getBounds(), { padding: [60, 60], maxZoom: 18 });
         }
@@ -610,58 +626,73 @@ const app = {
             if(STATE.currentFilter !== 'all' && point.type !== STATE.currentFilter) return;
 
             const isMeter = point.type === 'meter';
-            const marker = L.marker([point.lat, point.lng], { icon: isMeter ? ICONS.meter : ICONS.carpark });
+            let marker;
 
-            let contentHtml = '';
-            
             if (isMeter) {
+                // 🌟 【動態車位摘要圖標】: 讓咪錶的大 Pin 針直接變成實時空位看板，免點擊查看摘要！
                 const avail = point.available;
+                const meterLiveIcon = L.divIcon({
+                    className: 'custom-meter-badge',
+                    html: `
+                        <div class="relative flex flex-col items-center justify-center bg-white/95 backdrop-blur-md border border-emerald-500/30 shadow-md rounded-xl px-2 py-1 transition-all duration-200 hover:scale-105" style="min-width: 65px; border-bottom: 3px solid ${avail > 0 ? '#10b981' : '#ef4444'};">
+                            <div class="flex items-center space-x-1">
+                                <i class="fa-solid fa-square-parking text-emerald-500 text-[10px]"></i>
+                                <span class="text-[11px] font-black ${avail > 0 ? 'text-emerald-600' : 'text-red-500'}">${avail}</span>
+                                <span class="text-[9px] text-gray-400 font-bold">/${point.count}</span>
+                            </div>
+                        </div>
+                    `,
+                    iconSize: [70, 32], iconAnchor: [35, 16], popupAnchor: [0, -16]
+                });
 
-                contentHtml = `
-                <div class="w-[280px] p-2">
+                marker = L.marker([point.lat, point.lng], { icon: meterLiveIcon });
+
+                const contentHtml = `
+                <div class="w-[260px] p-2">
                     <div class="bg-emerald-100 text-emerald-700 text-[10px] font-black px-2.5 py-1 rounded-md inline-block mb-3 uppercase tracking-wider">Street Meters</div>
-                    <h3 class="font-black text-xl mb-4 leading-tight text-gray-800">${point.name}</h3>
+                    <h3 class="font-black text-lg mb-4 leading-tight text-gray-800">${point.name}</h3>
                     
-                    <div class="bg-gray-50/80 border border-gray-100 rounded-2xl p-5 mb-6 text-center shadow-inner">
-                        <div class="text-[11px] text-gray-400 font-bold mb-2">路段可用錶位 / 總數</div>
-                        <div class="font-black text-5xl ${avail > 0 ? 'text-emerald-500' : 'text-red-500'}">
-                            ${avail} <span class="text-2xl text-gray-400 font-bold">/ ${point.count}</span>
+                    <div class="bg-gray-50/80 border border-gray-100 rounded-2xl p-4 mb-5 text-center shadow-inner">
+                        <div class="text-[11px] text-gray-400 font-bold mb-1">路段可用錶位 / 總數</div>
+                        <div class="font-black text-4xl ${avail > 0 ? 'text-emerald-500' : 'text-red-500'}">
+                            ${avail} <span class="text-xl text-gray-400 font-bold">/ ${point.count}</span>
                         </div>
                     </div>
 
                     <div class="flex space-x-3">
-                        <button onclick="app.navigate(${point.lat}, ${point.lng})" class="flex-1 bg-blue-600 text-white py-3.5 rounded-2xl text-sm font-black shadow-md interactive-btn flex items-center justify-center"><i class="fa-solid fa-location-arrow mr-2"></i>導航至此</button>
-                        <button onclick="ui.openModal('save-modal', '${id}')" class="w-[50px] bg-white border border-gray-200 text-yellow-400 py-3.5 rounded-2xl text-lg shadow-sm interactive-btn flex items-center justify-center hover:bg-gray-50"><i class="fa-solid fa-star"></i></button>
+                        <button onclick="app.navigate(${point.lat}, ${point.lng})" class="flex-1 bg-blue-600 text-white py-3.5 rounded-2xl text-xs font-black shadow-md interactive-btn flex items-center justify-center"><i class="fa-solid fa-location-arrow mr-2"></i>導航</button>
+                        <button onclick="ui.openModal('save-modal', '${id}')" class="w-[50px] bg-white border border-gray-200 text-yellow-400 py-3.5 rounded-2xl text-base shadow-sm interactive-btn flex items-center justify-center hover:bg-gray-50"><i class="fa-solid fa-star"></i></button>
                     </div>
                 </div>`;
-                
-                // 綁定點擊事件，觸發在地圖上鋪排獨立車位
-                marker.on('click', () => {
-                    app.expandMeters(point.id);
-                });
+
+                marker.bindPopup(contentHtml, { closeButton: true, minWidth: 260 });
+                marker.on('click', () => { app.expandMeters(point.id); });
 
             } else {
+                // 停車場使用標準圖標
+                marker = L.marker([point.lat, point.lng], { icon: ICONS.carpark });
                 const avail = point.available;
                 const availColor = avail > 0 ? 'text-emerald-500' : (avail === 0 ? 'text-red-500' : 'text-gray-500');
 
-                contentHtml = `
+                const contentHtml = `
                 <div class="w-[260px] p-2">
                     <div class="bg-blue-100 text-blue-700 text-[10px] font-black px-2.5 py-1 rounded-md inline-block mb-3 uppercase tracking-wider">Carpark</div>
-                    <h3 class="font-black text-xl mb-4 leading-tight text-gray-800">${point.name}</h3>
+                    <h3 class="font-black text-lg mb-4 leading-tight text-gray-800">${point.name}</h3>
                     
-                    <div class="bg-gray-50/80 border border-gray-100 rounded-2xl p-5 mb-6 text-center shadow-inner">
-                        <div class="text-[11px] text-gray-400 font-bold mb-2">實時剩餘空位</div>
-                        <div class="font-black text-5xl ${availColor}">${avail}</div>
+                    <div class="bg-gray-50/80 border border-gray-100 rounded-2xl p-4 mb-5 text-center shadow-inner">
+                        <div class="text-[11px] text-gray-400 font-bold mb-1">實時剩餘空位</div>
+                        <div class="font-black text-4xl ${availColor}">${avail}</div>
                     </div>
 
                     <div class="flex space-x-3">
-                        <button onclick="app.navigate(${point.lat}, ${point.lng})" class="flex-1 bg-blue-600 text-white py-3.5 rounded-2xl text-sm font-black shadow-md interactive-btn flex items-center justify-center"><i class="fa-solid fa-location-arrow mr-2"></i>導航至此</button>
-                        <button onclick="ui.openModal('save-modal', '${id}')" class="w-[50px] bg-white border border-gray-200 text-yellow-400 py-3.5 rounded-2xl text-lg shadow-sm interactive-btn flex items-center justify-center hover:bg-gray-50"><i class="fa-solid fa-star"></i></button>
+                        <button onclick="app.navigate(${point.lat}, ${point.lng})" class="flex-1 bg-blue-600 text-white py-3.5 rounded-2xl text-xs font-black shadow-md interactive-btn flex items-center justify-center"><i class="fa-solid fa-location-arrow mr-2"></i>導航</button>
+                        <button onclick="ui.openModal('save-modal', '${id}')" class="w-[50px] bg-white border border-gray-200 text-yellow-400 py-3.5 rounded-2xl text-base shadow-sm interactive-btn flex items-center justify-center hover:bg-gray-50"><i class="fa-solid fa-star"></i></button>
                     </div>
                 </div>`;
+
+                marker.bindPopup(contentHtml, { closeButton: true, minWidth: 260 });
             }
 
-            marker.bindPopup(contentHtml, { closeButton: true, minWidth: 260 });
             markers.push(marker);
         });
 
@@ -669,11 +700,12 @@ const app = {
     },
 
     navigate(lat, lng) {
+        // 🌟 修復原生 App 導航喚醒 Bug
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
         if (isIOS) {
-            window.open(`http://maps.apple.com/?daddr=${lat},${lng}&dirflg=d`, '_blank');
+            window.open(`maps://maps.apple.com/?daddr=${lat},${lng}&dirflg=d`, '_blank');
         } else {
-            window.open(`https://www.google.com/maps/dir/?api=1&destination=$${lat},${lng}`, '_blank');
+            window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
         }
     },
 
